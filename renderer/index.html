@@ -1,0 +1,645 @@
+<!-- src/renderer/index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>GasTech App - Gestión de Mantenimientos</title>
+  <link rel="stylesheet" href="../../node_modules/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <div class="container-fluid">
+    <div class="row">
+      <!-- Sidebar de navegación -->
+      <div class="col-md-2 sidebar">
+        <div class="sidebar-header">
+          <h3>GasTech App</h3>
+        </div>
+        <ul class="nav flex-column">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" data-section="dashboard">
+              Dashboard
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-section="clients">
+              Clientes
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-section="installations">
+              Instalaciones
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-section="maintenance">
+              Mantenimientos
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-section="notifications">
+              Notificaciones
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Contenido principal -->
+      <div class="col-md-10 main-content">
+        <!-- Alerta para notificaciones -->
+        <div id="alert-container"></div>
+
+        <!-- Secciones de contenido -->
+        <div id="dashboard-section" class="content-section active">
+          <!-- Dashboard se cargará aquí -->
+        </div>
+
+        <div id="clients-section" class="content-section">
+          <!-- Gestión de clientes se cargará aquí -->
+        </div>
+
+        <div id="installations-section" class="content-section">
+          <!-- Gestión de instalaciones se cargará aquí -->
+        </div>
+
+        <div id="maintenance-section" class="content-section">
+          <!-- Gestión de mantenimientos se cargará aquí -->
+        </div>
+
+        <div id="notifications-section" class="content-section">
+          <!-- Gestión de notificaciones se cargará aquí -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modales -->
+  <!-- Modal de Cliente -->
+  <div class="modal fade" id="clientModal" tabindex="-1" aria-labelledby="clientModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="clientModalLabel">Agregar Cliente</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="clientForm">
+            <input type="hidden" id="clientId">
+            <div class="mb-3">
+              <label for="clientName" class="form-label">Nombre</label>
+              <input type="text" class="form-control" id="clientName" required>
+            </div>
+            <div class="mb-3">
+              <label for="clientPhone" class="form-label">Teléfono (con código de país)</label>
+              <input type="text" class="form-control" id="clientPhone" placeholder="+56912345678" required>
+              <small class="form-text text-muted">Incluir código de país (ej. +56 para Chile)</small>
+            </div>
+            <div class="mb-3">
+              <label for="clientEmail" class="form-label">Email</label>
+              <input type="email" class="form-control" id="clientEmail">
+            </div>
+            <div class="mb-3">
+              <label for="clientNotes" class="form-label">Notas</label>
+              <textarea class="form-control" id="clientNotes" rows="3"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="saveClientBtn">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Instalación -->
+  <div class="modal fade" id="installationModal" tabindex="-1" aria-labelledby="installationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="installationModalLabel">Agregar Instalación</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="installationForm">
+            <input type="hidden" id="installationId">
+            
+            <div class="mb-3">
+              <label for="installationClient" class="form-label">Cliente</label>
+              <select class="form-select" id="installationClient" required>
+                <option value="">Seleccionar cliente...</option>
+              </select>
+            </div>
+            
+            <div class="mb-3">
+              <label for="installationAddress" class="form-label">Dirección</label>
+              <input type="text" class="form-control" id="installationAddress" required>
+            </div>
+            
+            <div class="mb-3">
+              <label for="installationType" class="form-label">Tipo de Instalación</label>
+              <select class="form-select" id="installationType">
+                <option value="Residencial">Residencial</option>
+                <option value="Comercial">Comercial</option>
+                <option value="Industrial">Industrial</option>
+              </select>
+            </div>
+            
+            <div class="mb-3">
+              <label for="installationDate" class="form-label">Fecha de Instalación</label>
+              <input type="date" class="form-control" id="installationDate" required>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">Componentes</label>
+              <div id="componentsContainer">
+                <!-- Aquí se agregarán dinámicamente los componentes -->
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="addComponentBtn">
+                Agregar Componente
+              </button>
+            </div>
+            
+            <div class="mb-3">
+              <label for="installationNotes" class="form-label">Notas</label>
+              <textarea class="form-control" id="installationNotes" rows="3"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="saveInstallationBtn">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de WhatsApp -->
+  <div class="modal fade" id="whatsappModal" tabindex="-1" aria-labelledby="whatsappModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="whatsappModalLabel">Enviar Notificación por WhatsApp</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="whatsappRecipientName" class="form-label">Cliente</label>
+            <input type="text" class="form-control" id="whatsappRecipientName" readonly>
+            <input type="hidden" id="whatsappRecipientId">
+          </div>
+          <div class="mb-3">
+            <label for="whatsappRecipientPhone" class="form-label">Número de Teléfono</label>
+            <input type="text" class="form-control" id="whatsappRecipientPhone" readonly>
+          </div>
+          <div class="mb-3">
+            <label for="whatsappMessageTemplate" class="form-label">Plantilla de Mensaje</label>
+            <select class="form-select" id="whatsappMessageTemplate">
+              <option value="maintenance">Recordatorio de Mantenimiento</option>
+              <option value="followup">Seguimiento Post-Instalación</option>
+              <option value="custom">Mensaje Personalizado</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="whatsappMessage" class="form-label">Mensaje</label>
+            <textarea class="form-control" id="whatsappMessage" rows="5"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="sendWhatsappBtn">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de confirmación de eliminación -->
+  <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteConfirmModalLabel">Confirmar Eliminación</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p id="deleteConfirmMessage">¿Estás seguro de que deseas eliminar este elemento?</p>
+          <input type="hidden" id="deleteItemId">
+          <input type="hidden" id="deleteItemType">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Eliminar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Template para componente -->
+  <template id="componentTemplate">
+    <div class="component-item card mb-2">
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-2">
+              <label class="form-label">Nombre del Componente</label>
+              <input type="text" class="form-control component-name" placeholder="Ej. Caldera, Calefón, etc." required>
+              <input type="hidden" class="component-id">
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-2">
+              <label class="form-label">Marca/Modelo</label>
+              <input type="text" class="form-control component-model" placeholder="Ej. Marca XYZ Modelo 123">
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-4">
+            <div class="mb-2">
+              <label class="form-label">Última Mantención</label>
+              <input type="date" class="form-control component-last-maintenance">
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="mb-2">
+              <label class="form-label">Frecuencia (meses)</label>
+              <input type="number" class="form-control component-frequency" min="1" max="60" value="12">
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="mb-2">
+              <label class="form-label">Próxima Mantención</label>
+              <input type="date" class="form-control component-next-maintenance" readonly>
+            </div>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Notas del Componente</label>
+          <textarea class="form-control component-notes" rows="2"></textarea>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger remove-component-btn">
+          Eliminar Componente
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <!-- Scripts -->
+  <script src="../../node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="utils/ui.js"></script>
+  <script src="components/dashboard.js"></script>
+  <script src="components/clients.js"></script>
+  <script src="components/installations.js"></script>
+  <script src="components/maintenance.js"></script>
+  <script src="components/notifications.js"></script>
+  <script src="index.js"></script>
+</body>
+</html>
+
+/* src/renderer/styles/main.css */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow-x: hidden;
+  background-color: #f8f9fa;
+}
+
+.sidebar {
+  background-color: #343a40;
+  color: white;
+  min-height: 100vh;
+  padding: 0;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-header {
+  padding: 20px 15px;
+  background-color: #212529;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.75);
+  padding: 12px 20px;
+  transition: all 0.3s;
+  border-left: 4px solid transparent;
+}
+
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-left: 4px solid #0d6efd;
+}
+
+.main-content {
+  padding: 20px;
+}
+
+.content-section {
+  display: none;
+}
+
+.content-section.active {
+  display: block;
+}
+
+.card {
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border: none;
+  margin-bottom: 20px;
+}
+
+.card-header {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.client-card,
+.installation-card {
+  transition: all 0.3s;
+}
+
+.client-card:hover,
+.installation-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.maintenance-warning {
+  background-color: #fff3cd;
+}
+
+.dashboard-card {
+  text-align: center;
+  padding: 15px;
+}
+
+.dashboard-card .card-title {
+  font-size: 1.1rem;
+  color: #6c757d;
+}
+
+.dashboard-card .card-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+.notification-item {
+  border-left: 4px solid #0d6efd;
+}
+
+.notification-item.urgent {
+  border-left-color: #dc3545;
+}
+
+/* Pantallas pequeñas */
+@media (max-width: 768px) {
+  .sidebar {
+    min-height: auto;
+  }
+  
+  .dashboard-card .card-value {
+    font-size: 2rem;
+  }
+}
+
+// src/renderer/index.js - Punto de entrada del frontend
+document.addEventListener('DOMContentLoaded', () => {
+  // Inicializar componentes
+  initNavigation();
+  initAlerts();
+  
+  // Cargar dashboard al inicio
+  loadDashboard();
+  
+  // Manejar eventos de notificaciones
+  setupNotificationHandlers();
+});
+
+// Inicializar navegación entre secciones
+function initNavigation() {
+  const navLinks = document.querySelectorAll('.nav-link');
+  const contentSections = document.querySelectorAll('.content-section');
+  
+  navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetSection = link.getAttribute('data-section');
+      
+      // Actualizar enlaces activos
+      navLinks.forEach(navLink => navLink.classList.remove('active'));
+      link.classList.add('active');
+      
+      // Mostrar sección correspondiente
+      contentSections.forEach(section => {
+        section.classList.remove('active');
+        if (section.id === `${targetSection}-section`) {
+          section.classList.add('active');
+          
+          // Cargar contenido de la sección
+          switch (targetSection) {
+            case 'dashboard':
+              loadDashboard();
+              break;
+            case 'clients':
+              loadClients();
+              break;
+            case 'installations':
+              loadInstallations();
+              break;
+            case 'maintenance':
+              loadMaintenance();
+              break;
+            case 'notifications':
+              loadNotifications();
+              break;
+          }
+        }
+      });
+    });
+  });
+}
+
+// Inicializar sistema de alertas
+function initAlerts() {
+  // Escuchar eventos de alerta desde el proceso principal
+  window.api.onAlert((data) => {
+    showAlert(data.type, data.message);
+  });
+}
+
+// Mostrar una alerta en la interfaz
+function showAlert(type, message, duration = 5000) {
+  const alertContainer = document.getElementById('alert-container');
+  
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+  alertDiv.role = 'alert';
+  
+  alertDiv.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+  
+  alertContainer.appendChild(alertDiv);
+  
+  // Cerrar automáticamente después de la duración
+  setTimeout(() => {
+    const bsAlert = new bootstrap.Alert(alertDiv);
+    bsAlert.close();
+  }, duration);
+}
+
+// Configurar manejadores de notificaciones
+function setupNotificationHandlers() {
+  // Escuchar cuando hay mantenimientos próximos
+  window.api.onMaintenanceDue((maintenanceData) => {
+    // Mostrar alerta para cada mantenimiento próximo
+    if (Array.isArray(maintenanceData)) {
+      maintenanceData.forEach(maint => {
+        showAlert('warning', `Mantenimiento próximo: ${maint.componentName} en ${maint.address} (Cliente: ${maint.clientName}). Días restantes: ${maint.daysLeft}`);
+      });
+    } else {
+      showAlert('warning', `Mantenimiento próximo para el cliente ${maintenanceData.clientName}. Días restantes: ${maintenanceData.daysLeft}`);
+    }
+    
+    // Actualizar la sección de notificaciones si está visible
+    const notificationsSection = document.getElementById('notifications-section');
+    if (notificationsSection.classList.contains('active')) {
+      loadNotifications();
+    }
+  });
+  
+  // Escuchar cuando se importa la base de datos
+  window.api.onDatabaseImported(() => {
+    // Recargar la sección actual
+    const activeSection = document.querySelector('.content-section.active');
+    const sectionId = activeSection.id.replace('-section', '');
+    
+    switch (sectionId) {
+      case 'dashboard':
+        loadDashboard();
+        break;
+      case 'clients':
+        loadClients();
+        break;
+      case 'installations':
+        loadInstallations();
+        break;
+      case 'maintenance':
+        loadMaintenance();
+        break;
+      case 'notifications':
+        loadNotifications();
+        break;
+    }
+  });
+  
+  // Eventos para WhatsApp
+  window.api.onWhatsAppQr((qr) => {
+    // Mostrar código QR para escanear
+    showWhatsAppQrModal(qr);
+  });
+  
+  window.api.onWhatsAppReady(() => {
+    showAlert('success', 'WhatsApp conectado correctamente');
+  });
+  
+  window.api.onWhatsAppAuthFailure(() => {
+    showAlert('error', 'Error de autenticación en WhatsApp');
+  });
+}
+
+// src/renderer/utils/ui.js - Utilidades para la UI
+// Función para formatear fechas
+function formatDate(dateString) {
+  if (!dateString) return '-';
+  
+  const date = new Date(dateString);
+  return date.toLocaleDateString();
+}
+
+// Configurar botones de eliminar
+function setupDeleteButtons(buttons, type, confirmCallback) {
+  buttons.forEach(button => {
+    button.addEventListener('click', () => {
+      const id = button.getAttribute('data-id');
+      const name = button.getAttribute('data-name') || 'este elemento';
+      
+      // Configurar modal de confirmación
+      document.getElementById('deleteConfirmMessage').textContent = `¿Estás seguro de que deseas eliminar ${type === 'client' ? 'al cliente' : 'la instalación'} "${name}"?`;
+      document.getElementById('deleteItemId').value = id;
+      document.getElementById('deleteItemType').value = type;
+      
+      // Mostrar modal
+      const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+      deleteModal.show();
+      
+      // Configurar botón de confirmación
+      const confirmBtn = document.getElementById('confirmDeleteBtn');
+      confirmBtn.onclick = () => {
+        confirmCallback(id);
+        deleteModal.hide();
+      };
+    });
+  });
+}
+
+// Crear plantilla de mensajes predefinidos
+function createMessageTemplate(type, data) {
+  switch (type) {
+    case 'maintenance':
+      return `Estimado/a ${data.clientName},\n\nLe recordamos que su ${data.componentName} en ${data.address} requiere mantenimiento programado en los próximos días (${formatDate(data.nextMaintenanceDate)}).\n\nPor favor, contáctenos para agendar una visita.\n\nGracias,\nServicio Técnico de Gas`;
+    
+    case 'followup':
+      return `Estimado/a ${data.clientName},\n\nEsperamos que su instalación de gas esté funcionando correctamente. Queremos recordarle que estamos disponibles para cualquier consulta o servicio que necesite.\n\nGracias por confiar en nosotros.\n\nSaludos cordiales,\nServicio Técnico de Gas`;
+    
+    default:
+      return '';
+  }
+}
+
+// Mostrar modal de QR para WhatsApp
+function showWhatsAppQrModal(qrData) {
+  // Crear modal para mostrar QR
+  const modalHtml = `
+    <div class="modal fade" id="whatsappQrModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Conectar WhatsApp</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body text-center">
+            <p>Escanea este código QR con WhatsApp en tu teléfono:</p>
+            <div id="qrcode-container" class="my-3"></div>
+            <p class="small text-muted">Abre WhatsApp en tu teléfono > Menú > WhatsApp Web > Escanear código QR</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar modal al DOM si no existe
+  if (!document.getElementById('whatsappQrModal')) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = modalHtml;
+    document.body.appendChild(tempDiv.firstElementChild);
+  }
+  
+  // Mostrar el QR
+  const qrContainer = document.getElementById('qrcode-container');
+  // Aquí se usaría una biblioteca para generar QR, pero por simplicidad:
+  qrContainer.innerHTML = `<div class="alert alert-info">Código QR generado</div>`;
+  
+  // Mostrar modal
+  const qrModal = new bootstrap.Modal(document.getElementById('whatsappQrModal'));
+  qrModal.show();
+}
