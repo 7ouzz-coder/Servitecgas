@@ -1,243 +1,945 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // Inicializar componentes
-    initNavigation();
-    initAlerts();
+document.addEventListener('DOMContentLoaded', async () => {
+  // Verificar autenticación
+  try {
+    const authStatus = await window.api.checkAuth();
     
-    // Configurar manejadores de eventos para modales
-    setupModalHandlers();
+    if (!authStatus.isAuthenticated) {
+      // Redirigir a la página de login
+      window.location.href = 'login.html';
+      return;
+    }
     
-    // Cargar dashboard al inicio
-    loadDashboard();
-    
-    // Manejar eventos de notificaciones
-    setupNotificationHandlers();
-  });
+    // Iniciar la aplicación si está autenticado
+    initApp();
+  } catch (error) {
+    console.error('Error al verificar autenticación:', error);
+    // En caso de error, redirigir a login por seguridad
+    window.location.href = 'login.html';
+  }
+});
+
+// Iniciar la aplicación
+function initApp() {
+  // Inicializar componentes
+  initNavigation();
+  initAlerts();
+  setupModalHandlers();
   
-  // Inicializar navegación entre secciones
-  function initNavigation() {
-    const navLinks = document.querySelectorAll('.nav-link');
-    const contentSections = document.querySelectorAll('.content-section');
-    
-    navLinks.forEach(link => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const targetSection = link.getAttribute('data-section');
-        
-        // Actualizar enlaces activos
-        navLinks.forEach(navLink => navLink.classList.remove('active'));
-        link.classList.add('active');
-        
-        // Mostrar sección correspondiente
-        contentSections.forEach(section => {
-          section.classList.remove('active');
-          if (section.id === `${targetSection}-section`) {
-            section.classList.add('active');
-            
-            // Cargar contenido de la sección
-            switch (targetSection) {
-              case 'dashboard':
-                loadDashboard();
-                break;
-              case 'clients':
-                loadClients();
-                break;
-              case 'installations':
-                loadInstallations();
-                break;
-              case 'maintenance':
-                loadMaintenance();
-                break;
-              case 'notifications':
-                loadNotifications();
-                break;
-              case 'reports':
-                loadReports();
-                break;
-            }
+  // Cargar información del usuario
+  loadUserInfo();
+  
+  // Cargar dashboard al inicio
+  loadDashboard();
+  
+  // Configurar manejadores de eventos
+  setupNotificationHandlers();
+  setupFileHandlers();
+  setupUserMenu();
+  
+  // Escuchar eventos de autenticación
+  window.api.onAuthChanged((data) => {
+    if (!data.isAuthenticated) {
+      // Si se cierra la sesión, redirigir a login
+      window.location.href = 'login.html';
+    }
+  });
+}
+
+// Inicializar navegación entre secciones
+function initNavigation() {
+  const navLinks = document.querySelectorAll('.nav-link');
+  const contentSections = document.querySelectorAll('.content-section');
+  
+  navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetSection = link.getAttribute('data-section');
+      
+      // Actualizar enlaces activos
+      navLinks.forEach(navLink => navLink.classList.remove('active'));
+      link.classList.add('active');
+      
+      // Mostrar sección correspondiente
+      contentSections.forEach(section => {
+        section.classList.remove('active');
+        if (section.id === `${targetSection}-section`) {
+          section.classList.add('active');
+          
+          // Cargar contenido de la sección
+          switch (targetSection) {
+            case 'dashboard':
+              loadDashboard();
+              break;
+            case 'clients':
+              loadClients();
+              break;
+            case 'installations':
+              loadInstallations();
+              break;
+            case 'maintenance':
+              loadMaintenance();
+              break;
+            case 'notifications':
+              loadNotifications();
+              break;
+            case 'reports':
+              loadReports();
+              break;
           }
-        });
+        }
       });
     });
-  }
+  });
+}
+
+// Inicializar sistema de alertas
+function initAlerts() {
+  // Escuchar eventos de alerta desde el proceso principal
+  window.api.onAlert((data) => {
+    showAlert(data.type, data.message);
+  });
+}
+
+// Mostrar una alerta en la interfaz
+function showAlert(type, message, duration = 5000) {
+  const alertContainer = document.getElementById('alert-container');
   
-  // Inicializar sistema de alertas
-  function initAlerts() {
-    // Escuchar eventos de alerta desde el proceso principal
-    window.api.onAlert((data) => {
-      showAlert(data.type, data.message);
-    });
-  }
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+  alertDiv.role = 'alert';
   
-  // Mostrar una alerta en la interfaz
-  function showAlert(type, message, duration = 5000) {
-    const alertContainer = document.getElementById('alert-container');
-    
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.role = 'alert';
-    
-    alertDiv.innerHTML = `
-      ${message}
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-    
-    alertContainer.appendChild(alertDiv);
-    
-    // Cerrar automáticamente después de la duración
-    setTimeout(() => {
+  alertDiv.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+  
+  alertContainer.appendChild(alertDiv);
+  
+  // Cerrar automáticamente después de la duración
+  setTimeout(() => {
+    if (alertDiv.parentNode) {
       const bsAlert = new bootstrap.Alert(alertDiv);
       bsAlert.close();
-    }, duration);
+    }
+  }, duration);
+}
+
+// Configurar manejadores para modales
+function setupModalHandlers() {
+  // Agregar manejadores según necesidades...
+}
+
+// Manejar notificaciones y otros eventos
+function setupNotificationHandlers() {
+  // Escuchar cuando hay mantenimientos próximos
+  window.api.onMaintenanceDue((maintenanceData) => {
+    // Mostrar alerta para cada mantenimiento próximo
+    if (Array.isArray(maintenanceData) && maintenanceData.length > 0) {
+      showAlert('warning', `Hay ${maintenanceData.length} mantenimientos próximos. Revisa la sección de mantenimientos.`);
+    }
+    
+    // Actualizar la sección de notificaciones si está visible
+    const notificationsSection = document.getElementById('notifications-section');
+    if (notificationsSection && notificationsSection.classList.contains('active')) {
+      loadNotifications();
+    }
+  });
+  
+  // Escuchar cuando se importa la base de datos
+  window.api.onDatabaseImported(() => {
+    showAlert('success', 'Base de datos importada correctamente');
+    
+    // Recargar la sección actual
+    const activeSection = document.querySelector('.content-section.active');
+    if (!activeSection) return;
+    
+    const sectionId = activeSection.id.replace('-section', '');
+    
+    switch (sectionId) {
+      case 'dashboard':
+        loadDashboard();
+        break;
+      case 'clients':
+        loadClients();
+        break;
+      case 'installations':
+        loadInstallations();
+        break;
+      case 'maintenance':
+        loadMaintenance();
+        break;
+      case 'notifications':
+        loadNotifications();
+        break;
+      case 'reports':
+        loadReports();
+        break;
+    }
+  });
+}
+
+// Configurar manejadores para exportar/importar base de datos
+function setupFileHandlers() {
+  // Agregar opciones al menú de usuario
+  const userMenu = document.querySelector('.user-menu');
+  if (!userMenu) return;
+  
+  // Si los elementos ya existen, no los añadimos de nuevo
+  if (document.getElementById('exportDbBtn')) return;
+  
+  const exportImportItems = `
+    <div class="dropdown-divider"></div>
+    <a href="#" class="dropdown-item" id="exportDbBtn">
+      <i class="bi bi-download me-2"></i> Exportar base de datos
+    </a>
+    <a href="#" class="dropdown-item" id="importDbBtn">
+      <i class="bi bi-upload me-2"></i> Importar base de datos
+    </a>
+  `;
+  
+  // Insertar antes del último divider (que debería ser el de logout)
+  const lastDivider = Array.from(userMenu.querySelectorAll('.dropdown-divider')).pop();
+  if (lastDivider) {
+    lastDivider.insertAdjacentHTML('beforebegin', exportImportItems);
+  } else {
+    userMenu.insertAdjacentHTML('beforeend', exportImportItems);
   }
   
-  // Configurar manejadores para modales
-  function setupModalHandlers() {
-    // Modal de WhatsApp
-    document.getElementById('whatsappMessageTemplate').addEventListener('change', function() {
-      const templateType = this.value;
-      const clientName = document.getElementById('whatsappRecipientName').value;
-      
-      let messageData = {
-        clientName
-      };
-      
-      // Para mantenimiento, podemos usar datos genéricos si no hay específicos
-      if (templateType === 'maintenance') {
-        messageData.componentName = messageData.componentName || 'equipo';
-        messageData.address = messageData.address || 'su dirección';
-        messageData.nextMaintenanceDate = messageData.nextMaintenanceDate || 
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      }
-      
-      // Si es personalizado, dejar vacío
-      if (templateType === 'custom') {
-        document.getElementById('whatsappMessage').value = '';
-        return;
-      }
-      
-      document.getElementById('whatsappMessage').value = createMessageTemplate(templateType, messageData);
-    });
+  // Configurar eventos
+  document.getElementById('exportDbBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
     
-    // Botón para enviar mensaje de WhatsApp
-    document.getElementById('sendWhatsappBtn').addEventListener('click', async function() {
-      const phone = document.getElementById('whatsappRecipientPhone').value;
-      const message = document.getElementById('whatsappMessage').value;
+    try {
+      showAlert('info', 'Preparando exportación de la base de datos...');
+      const result = await window.api.exportDatabase();
       
-      if (!phone || !message) {
-        showAlert('warning', 'Debes proporcionar un número de teléfono y un mensaje');
+      if (result.success) {
+        showAlert('success', `Base de datos exportada correctamente a: ${result.filePath}`);
+      } else {
+        showAlert('danger', result.message);
+      }
+    } catch (error) {
+      showAlert('danger', `Error al exportar base de datos: ${error.message}`);
+    }
+  });
+  
+  document.getElementById('importDbBtn').addEventListener('click', async (e) => {
+    e.preventDefault();
+    
+    try {
+      showAlert('info', 'Selecciona el archivo a importar...');
+      const result = await window.api.importDatabase();
+      
+      if (result.success) {
+        showAlert('success', `Base de datos importada correctamente. Clientes: ${result.stats.clients}, Instalaciones: ${result.stats.installations}`);
+      } else {
+        showAlert('danger', result.message);
+      }
+    } catch (error) {
+      showAlert('danger', `Error al importar base de datos: ${error.message}`);
+    }
+  });
+}
+
+// Cargar información del usuario y configurar menú
+function loadUserInfo() {
+  window.api.getUserInfo().then(userInfo => {
+    if (!userInfo) return;
+    
+    // Añadir nombre de usuario y menú
+    const sidebarHeader = document.querySelector('.sidebar-header');
+    if (!sidebarHeader) return;
+    
+    // Crear menú de usuario si no existe
+    if (!document.querySelector('.user-info')) {
+      const userInfoHtml = `
+        <div class="user-info mt-3">
+          <div class="dropdown">
+            <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle text-light" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+              <div class="user-avatar rounded-circle bg-primary me-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                <span>${userInfo.name ? userInfo.name.substring(0, 1).toUpperCase() : 'U'}</span>
+              </div>
+              <span class="user-name">${userInfo.name || userInfo.username || 'Usuario'}</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-dark text-small shadow user-menu" aria-labelledby="userDropdown">
+              <li><a class="dropdown-item" href="#" id="userProfileMenuItem"><i class="bi bi-person me-2"></i> Perfil</a></li>
+              ${userInfo.role === 'admin' ? '<li><a class="dropdown-item" href="#" id="adminMenuItem"><i class="bi bi-shield-lock me-2"></i> Administración</a></li>' : ''}
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" id="logoutMenuItem"><i class="bi bi-box-arrow-right me-2"></i> Cerrar sesión</a></li>
+            </ul>
+          </div>
+        </div>
+      `;
+      
+      sidebarHeader.innerHTML += userInfoHtml;
+      
+      // Configurar eventos del menú
+      setupUserMenu();
+    }
+  }).catch(error => {
+    console.error('Error al cargar información del usuario:', error);
+  });
+}
+
+// Configurar eventos para el menú de usuario
+function setupUserMenu() {
+  // Perfil de usuario
+  const userProfileMenuItem = document.getElementById('userProfileMenuItem');
+  if (userProfileMenuItem) {
+    userProfileMenuItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      showUserProfileModal();
+    });
+  }
+  
+  // Panel de administración (solo para admin)
+  const adminMenuItem = document.getElementById('adminMenuItem');
+  if (adminMenuItem) {
+    adminMenuItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      showAdminPanel();
+    });
+  }
+  
+  // Cerrar sesión
+  const logoutMenuItem = document.getElementById('logoutMenuItem');
+  if (logoutMenuItem) {
+    logoutMenuItem.addEventListener('click', async (e) => {
+      e.preventDefault();
+      
+      try {
+        await window.api.logout();
+        // La redirección se maneja a través del evento onAuthChanged
+      } catch (error) {
+        showAlert('danger', `Error al cerrar sesión: ${error.message}`);
+      }
+    });
+  }
+}
+
+// Mostrar modal de perfil de usuario
+async function showUserProfileModal() {
+  try {
+    // Obtener información del usuario
+    const userInfo = await window.api.getUserInfo();
+    if (!userInfo) {
+      showAlert('warning', 'No se pudo obtener información del usuario');
+      return;
+    }
+    
+    // Crear modal
+    const modalHtml = `
+      <div class="modal fade" id="userProfileModal" tabindex="-1" aria-labelledby="userProfileModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="userProfileModalLabel">Perfil de Usuario</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <form id="userProfileForm">
+                <div class="mb-3">
+                  <label for="profileUsername" class="form-label">Usuario</label>
+                  <input type="text" class="form-control" id="profileUsername" value="${userInfo.username || ''}" readonly>
+                </div>
+                
+                <div class="mb-3">
+                  <label for="profileName" class="form-label">Nombre</label>
+                  <input type="text" class="form-control" id="profileName" value="${userInfo.name || ''}">
+                </div>
+                
+                <div class="mb-3">
+                  <label for="profileEmail" class="form-label">Email</label>
+                  <input type="email" class="form-control" id="profileEmail" value="${userInfo.email || ''}">
+                </div>
+                
+                <div class="mb-3">
+                  <label for="profileRole" class="form-label">Rol</label>
+                  <input type="text" class="form-control" id="profileRole" value="${userInfo.role || 'Usuario'}" readonly>
+                </div>
+              </form>
+              
+              <div class="accordion mt-4" id="profileAccordion">
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="changePasswordHeader">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#changePasswordCollapse" aria-expanded="false" aria-controls="changePasswordCollapse">
+                      Cambiar Contraseña
+                    </button>
+                  </h2>
+                  <div id="changePasswordCollapse" class="accordion-collapse collapse" aria-labelledby="changePasswordHeader" data-bs-parent="#profileAccordion">
+                    <div class="accordion-body">
+                      <form id="changePasswordForm">
+                        <div class="mb-3">
+                          <label for="currentPassword" class="form-label">Contraseña Actual</label>
+                          <input type="password" class="form-control" id="currentPassword" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                          <label for="newPassword" class="form-label">Nueva Contraseña</label>
+                          <input type="password" class="form-control" id="newPassword" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                          <label for="confirmPassword" class="form-label">Confirmar Contraseña</label>
+                          <input type="password" class="form-control" id="confirmPassword" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Cambiar Contraseña</button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="saveProfileBtn">Guardar Cambios</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Agregar modal al DOM
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHtml;
+    document.body.appendChild(modalContainer.firstChild);
+    
+    // Configurar envío del formulario de cambio de contraseña
+    document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const currentPassword = document.getElementById('currentPassword').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      
+      // Validar contraseñas
+      if (newPassword !== confirmPassword) {
+        showAlert('danger', 'Las contraseñas no coinciden');
         return;
       }
       
       try {
-        // Enviar mensaje
-        const result = await window.api.sendWhatsAppMessage({
-          phone,
-          message
+        const result = await window.api.changePassword({
+          currentPassword,
+          newPassword
         });
         
         if (result.success) {
-          showAlert('success', 'Mensaje enviado correctamente');
+          showAlert('success', 'Contraseña actualizada correctamente');
+          document.getElementById('changePasswordForm').reset();
           
-          // Cerrar modal
-          const modal = bootstrap.Modal.getInstance(document.getElementById('whatsappModal'));
-          modal.hide();
+          // Cerrar el collapse
+          const collapse = bootstrap.Collapse.getInstance(document.getElementById('changePasswordCollapse'));
+          if (collapse) {
+            collapse.hide();
+          }
         } else {
-          showAlert('danger', `Error al enviar mensaje: ${result.message}`);
+          showAlert('danger', result.message || 'Error al cambiar contraseña');
         }
       } catch (error) {
-        showAlert('danger', `Error al enviar mensaje: ${error.message}`);
+        showAlert('danger', 'Error al cambiar contraseña');
       }
     });
-  }
-  
-  // Configurar manejadores de notificaciones
-function setupNotificationHandlers() {
-  // Verificar si las funciones de API están disponibles
-  if (!window.api) {
-    console.error("API no disponible para configurar notificaciones");
-    return;
-  }
-
-  // Escuchar cuando hay mantenimientos próximos - Solo si la función existe
-  if (window.api.onMaintenanceDue) {
-    window.api.onMaintenanceDue((maintenanceData) => {
-      // Mostrar alerta para cada mantenimiento próximo
-      if (Array.isArray(maintenanceData)) {
-        maintenanceData.forEach(maint => {
-          showAlert('warning', `Mantenimiento próximo: ${maint.componentName} en ${maint.address} (Cliente: ${maint.clientName}). Días restantes: ${maint.daysLeft}`);
+    
+    // Configurar botón guardar cambios del perfil
+    document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+      const name = document.getElementById('profileName').value;
+      const email = document.getElementById('profileEmail').value;
+      
+      try {
+        const result = await window.api.updateUser({
+          name,
+          email
         });
+        
+        if (result.success) {
+          showAlert('success', 'Perfil actualizado correctamente');
+          
+          // Actualizar el nombre mostrado en el menú
+          const userNameElement = document.querySelector('.user-name');
+          if (userNameElement) {
+            userNameElement.textContent = result.user.name || result.user.username;
+          }
+          
+          // Actualizar la inicial en el avatar
+          const userAvatarElement = document.querySelector('.user-avatar span');
+          if (userAvatarElement && result.user.name) {
+            userAvatarElement.textContent = result.user.name.substring(0, 1).toUpperCase();
+          }
+          
+          // Cerrar modal
+          const modal = bootstrap.Modal.getInstance(document.getElementById('userProfileModal'));
+          modal.hide();
+        } else {
+          showAlert('danger', result.message || 'Error al actualizar perfil');
+        }
+      } catch (error) {
+        showAlert('danger', 'Error al actualizar perfil');
+      }
+    });
+    
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById('userProfileModal'));
+    modal.show();
+    
+    // Eliminar modal al cerrarse
+    document.getElementById('userProfileModal').addEventListener('hidden.bs.modal', function() {
+      this.remove();
+    });
+  } catch (error) {
+    console.error('Error al mostrar modal de perfil:', error);
+    showAlert('danger', 'Error al mostrar perfil de usuario');
+  }
+}
+
+// Mostrar panel de administración (solo para admin)
+async function showAdminPanel() {
+  try {
+    // Verificar si el usuario es administrador
+    const userInfo = await window.api.getUserInfo();
+    if (!userInfo || userInfo.role !== 'admin') {
+      showAlert('danger', 'Acceso denegado');
+      return;
+    }
+    
+    // Obtener lista de usuarios
+    const response = await window.api.listUsers();
+    if (!response.success) {
+      showAlert('danger', response.message || 'Error al obtener lista de usuarios');
+      return;
+    }
+    
+    const users = response.users;
+    
+    // Crear modal
+    const modalHtml = `
+      <div class="modal fade" id="adminPanelModal" tabindex="-1" aria-labelledby="adminPanelModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="adminPanelModalLabel">Panel de Administración</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-tab-pane" type="button" role="tab" aria-controls="users-tab-pane" aria-selected="true">
+                    Gestión de Usuarios
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-tab-pane" type="button" role="tab" aria-controls="settings-tab-pane" aria-selected="false">
+                    Configuración
+                  </button>
+                </li>
+              </ul>
+              
+              <div class="tab-content p-3" id="adminTabsContent">
+                <!-- Tab usuarios -->
+                <div class="tab-pane fade show active" id="users-tab-pane" role="tabpanel" aria-labelledby="users-tab" tabindex="0">
+                  <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Usuarios del Sistema</h6>
+                    <button class="btn btn-primary btn-sm" id="createUserBtn">
+                      <i class="bi bi-person-plus"></i> Nuevo Usuario
+                    </button>
+                  </div>
+                  
+                  <div class="table-responsive">
+                    <table class="table table-hover">
+                      <thead>
+                        <tr>
+                          <th>Usuario</th>
+                          <th>Nombre</th>
+                          <th>Email</th>
+                          <th>Rol</th>
+                          <th>Último Acceso</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="usersTable">
+                        ${users.map(user => `
+                          <tr>
+                            <td>${user.username}</td>
+                            <td>${user.name || '-'}</td>
+                            <td>${user.email || '-'}</td>
+                            <td><span class="badge ${user.role === 'admin' ? 'bg-danger' : 'bg-primary'}">${user.role}</span></td>
+                            <td>${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Nunca'}</td>
+                            <td>
+                              <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary edit-user-btn" data-userid="${user.id}">
+                                  <i class="bi bi-pencil"></i>
+                                </button>
+                                ${userInfo.id !== user.id ? 
+                                  `<button class="btn btn-outline-danger delete-user-btn" data-userid="${user.id}" data-username="${user.username}">
+                                    <i class="bi bi-trash"></i>
+                                  </button>` : ''}
+                              </div>
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                <!-- Tab configuración -->
+                <div class="tab-pane fade" id="settings-tab-pane" role="tabpanel" aria-labelledby="settings-tab" tabindex="0">
+                  <h6 class="mb-3">Configuración del Sistema</h6>
+                  
+                  <div class="card mb-3">
+                    <div class="card-header">Respaldo y Restauración</div>
+                    <div class="card-body">
+                      <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" id="adminExportDbBtn">
+                          <i class="bi bi-download me-2"></i> Exportar base de datos
+                        </button>
+                        <button class="btn btn-outline-warning" id="adminImportDbBtn">
+                          <i class="bi bi-upload me-2"></i> Importar base de datos
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="card">
+                    <div class="card-header">Información del Sistema</div>
+                    <div class="card-body">
+                      <p><strong>Versión:</strong> 1.0.0</p>
+                      <p><strong>Fecha de Compilación:</strong> ${new Date().toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Agregar modal al DOM
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHtml;
+    document.body.appendChild(modalContainer.firstChild);
+    
+    // Configurar evento para crear usuario
+    document.getElementById('createUserBtn').addEventListener('click', () => {
+      showCreateUserModal();
+    });
+    
+    // Configurar eventos para botones de editar usuario
+    document.querySelectorAll('.edit-user-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        const userId = button.getAttribute('data-userid');
+        const user = users.find(u => u.id === userId);
+        if (user) {
+          showEditUserModal(user);
+        }
+      });
+    });
+    
+    // Configurar eventos para botones de eliminar usuario
+    document.querySelectorAll('.delete-user-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        const userId = button.getAttribute('data-userid');
+        const username = button.getAttribute('data-username');
+        
+        if (confirm(`¿Estás seguro de que deseas eliminar el usuario ${username}?`)) {
+          deleteUser(userId);
+        }
+      });
+    });
+    
+    // Configurar botones de exportar e importar
+    document.getElementById('adminExportDbBtn').addEventListener('click', async () => {
+      try {
+        showAlert('info', 'Preparando exportación de la base de datos...');
+        const result = await window.api.exportDatabase();
+        
+        if (result.success) {
+          showAlert('success', `Base de datos exportada correctamente a: ${result.filePath}`);
+        } else {
+          showAlert('danger', result.message);
+        }
+      } catch (error) {
+        showAlert('danger', `Error al exportar base de datos: ${error.message}`);
+      }
+    });
+    
+    document.getElementById('adminImportDbBtn').addEventListener('click', async () => {
+      try {
+        showAlert('info', 'Selecciona el archivo a importar...');
+        const result = await window.api.importDatabase();
+        
+        if (result.success) {
+          showAlert('success', `Base de datos importada correctamente. Clientes: ${result.stats.clients}, Instalaciones: ${result.stats.installations}`);
+        } else {
+          showAlert('danger', result.message);
+        }
+      } catch (error) {
+        showAlert('danger', `Error al importar base de datos: ${error.message}`);
+      }
+    });
+    
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById('adminPanelModal'));
+    modal.show();
+    
+    // Eliminar modal al cerrarse
+    document.getElementById('adminPanelModal').addEventListener('hidden.bs.modal', function() {
+      this.remove();
+    });
+  } catch (error) {
+    console.error('Error al mostrar panel de administración:', error);
+    showAlert('danger', 'Error al mostrar panel de administración');
+  }
+}
+
+// Mostrar modal para crear un nuevo usuario
+function showCreateUserModal() {
+  // Crear modal
+  const modalHtml = `
+    <div class="modal fade" id="createUserModal" tabindex="-1" aria-labelledby="createUserModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="createUserModalLabel">Crear Nuevo Usuario</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="createUserForm">
+              <div class="mb-3">
+                <label for="newUsername" class="form-label">Usuario</label>
+                <input type="text" class="form-control" id="newUsername" required>
+              </div>
+              
+              <div class="mb-3">
+                <label for="newName" class="form-label">Nombre</label>
+                <input type="text" class="form-control" id="newName">
+              </div>
+              
+              <div class="mb-3">
+                <label for="newEmail" class="form-label">Email</label>
+                <input type="email" class="form-control" id="newEmail">
+              </div>
+              
+              <div class="mb-3">
+                <label for="newPassword" class="form-label">Contraseña</label>
+                <input type="password" class="form-control" id="newPassword" required>
+              </div>
+              
+              <div class="mb-3">
+                <label for="newRole" class="form-label">Rol</label>
+                <select class="form-select" id="newRole">
+                  <option value="user">Usuario</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="saveNewUserBtn">Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar modal al DOM
+  const modalContainer = document.createElement('div');
+  modalContainer.innerHTML = modalHtml;
+  document.body.appendChild(modalContainer.firstChild);
+  
+  // Configurar botón guardar
+  document.getElementById('saveNewUserBtn').addEventListener('click', async () => {
+    try {
+      const username = document.getElementById('newUsername').value.trim();
+      const name = document.getElementById('newName').value.trim();
+      const email = document.getElementById('newEmail').value.trim();
+      const password = document.getElementById('newPassword').value;
+      const role = document.getElementById('newRole').value;
+      
+      // Validación básica
+      if (!username || !password) {
+        showAlert('warning', 'Usuario y contraseña son obligatorios');
+        return;
+      }
+      
+      // Crear usuario
+      const result = await window.api.createUser({
+        username,
+        password,
+        name,
+        email,
+        role
+      });
+      
+      if (result.success) {
+        showAlert('success', 'Usuario creado correctamente');
+        
+        // Cerrar modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('createUserModal'));
+        modal.hide();
+        
+        // Recargar panel de administración
+        document.getElementById('adminPanelModal').remove();
+        showAdminPanel();
       } else {
-        showAlert('warning', `Mantenimiento próximo para el cliente ${maintenanceData.clientName}. Días restantes: ${maintenanceData.daysLeft}`);
+        showAlert('danger', result.message || 'Error al crear usuario');
       }
-      
-      // Actualizar la sección de notificaciones si está visible
-      const notificationsSection = document.getElementById('notifications-section');
-      if (notificationsSection && notificationsSection.classList.contains('active')) {
-        loadNotifications();
-      }
-    });
-  } else {
-    console.log("Función onMaintenanceDue no disponible - saltando configuración");
-  }
+    } catch (error) {
+      console.error('Error al crear usuario:', error);
+      showAlert('danger', 'Error al crear usuario');
+    }
+  });
   
-  // Escuchar cuando se importa la base de datos - Solo si la función existe
-  if (window.api.onDatabaseImported) {
-    window.api.onDatabaseImported(() => {
-      // Recargar la sección actual
-      const activeSection = document.querySelector('.content-section.active');
-      if (!activeSection) return;
-      
-      const sectionId = activeSection.id.replace('-section', '');
-      
-      switch (sectionId) {
-        case 'dashboard':
-          if (typeof loadDashboard === 'function') loadDashboard();
-          break;
-        case 'clients':
-          if (typeof loadClients === 'function') loadClients();
-          break;
-        case 'installations':
-          if (typeof loadInstallations === 'function') loadInstallations();
-          break;
-        case 'maintenance':
-          if (typeof loadMaintenance === 'function') loadMaintenance();
-          break;
-        case 'notifications':
-          if (typeof loadNotifications === 'function') loadNotifications();
-          break;
-        case 'reports':
-          if (typeof loadReports === 'function') loadReports();
-          break;
-      }
-    });
-  } else {
-    console.log("Función onDatabaseImported no disponible - saltando configuración");
-  }
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('createUserModal'));
+  modal.show();
   
-  // Eventos para WhatsApp - Solo si las funciones existen
-  if (window.api.onWhatsAppQr) {
-    window.api.onWhatsAppQr((qr) => {
-      // Mostrar código QR para escanear
-      if (typeof showWhatsAppQrModal === 'function') {
-        showWhatsAppQrModal(qr);
+  // Eliminar modal al cerrarse
+  document.getElementById('createUserModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+// Mostrar modal para editar un usuario existente
+function showEditUserModal(user) {
+  // Crear modal
+  const modalHtml = `
+    <div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="editUserModalLabel">Editar Usuario</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="editUserForm">
+              <input type="hidden" id="editUserId" value="${user.id}">
+              
+              <div class="mb-3">
+                <label for="editUsername" class="form-label">Usuario</label>
+                <input type="text" class="form-control" id="editUsername" value="${user.username}" readonly>
+              </div>
+              
+              <div class="mb-3">
+                <label for="editName" class="form-label">Nombre</label>
+                <input type="text" class="form-control" id="editName" value="${user.name || ''}">
+              </div>
+              
+              <div class="mb-3">
+                <label for="editEmail" class="form-label">Email</label>
+                <input type="email" class="form-control" id="editEmail" value="${user.email || ''}">
+              </div>
+              
+              <div class="mb-3">
+                <label for="editRole" class="form-label">Rol</label>
+                <select class="form-select" id="editRole">
+                  <option value="user" ${user.role === 'user' ? 'selected' : ''}>Usuario</option>
+                  <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrador</option>
+                </select>
+              </div>
+              
+              <div class="accordion" id="editUserAccordion">
+                <div class="accordion-item">
+                  <h2 class="accordion-header" id="resetPasswordHeader">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#resetPasswordCollapse" aria-expanded="false" aria-controls="resetPasswordCollapse">
+                      Cambiar Contraseña
+                    </button>
+                  </h2>
+                  <div id="resetPasswordCollapse" class="accordion-collapse collapse" aria-labelledby="resetPasswordHeader" data-bs-parent="#editUserAccordion">
+                    <div class="accordion-body">
+                      <div class="mb-3">
+                        <label for="editPassword" class="form-label">Nueva Contraseña</label>
+                        <input type="password" class="form-control" id="editPassword">
+                        <div class="form-text">Dejar en blanco para mantener la contraseña actual</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="saveEditUserBtn">Guardar Cambios</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar modal al DOM
+  const modalContainer = document.createElement('div');
+  modalContainer.innerHTML = modalHtml;
+  document.body.appendChild(modalContainer.firstChild);
+  
+  // Configurar botón guardar
+  document.getElementById('saveEditUserBtn').addEventListener('click', async () => {
+    try {
+      const userId = document.getElementById('editUserId').value;
+      const name = document.getElementById('editName').value.trim();
+      const email = document.getElementById('editEmail').value.trim();
+      const role = document.getElementById('editRole').value;
+      const password = document.getElementById('editPassword')?.value || null;
+      
+      // Actualizar usuario
+      const userData = { name, email, role };
+      if (password) {
+        userData.password = password;
+      }
+      
+      const result = await window.api.updateUserAdmin(userId, userData);
+      
+      if (result.success) {
+        showAlert('success', 'Usuario actualizado correctamente');
+        
+        // Cerrar modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('editUserModal'));
+        modal.hide();
+        
+        // Recargar panel de administración
+        document.getElementById('adminPanelModal').remove();
+        showAdminPanel();
       } else {
-        console.log("Código QR de WhatsApp recibido, pero la función showWhatsAppQrModal no está disponible");
+        showAlert('danger', result.message || 'Error al actualizar usuario');
       }
-    });
-  }
+    } catch (error) {
+      console.error('Error al actualizar usuario:', error);
+      showAlert('danger', 'Error al actualizar usuario');
+    }
+  });
   
-  if (window.api.onWhatsAppReady) {
-    window.api.onWhatsAppReady(() => {
-      showAlert('success', 'WhatsApp conectado correctamente');
-    });
-  }
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+  modal.show();
   
-  if (window.api.onWhatsAppAuthFailure) {
-    window.api.onWhatsAppAuthFailure(() => {
-      showAlert('danger', 'Error de autenticación en WhatsApp');
-    });
+  // Eliminar modal al cerrarse
+  document.getElementById('editUserModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+// Eliminar un usuario
+async function deleteUser(userId) {
+  try {
+    const result = await window.api.deleteUser(userId);
+    
+    if (result.success) {
+      showAlert('success', 'Usuario eliminado correctamente');
+      
+      // Recargar panel de administración
+      document.getElementById('adminPanelModal').remove();
+      showAdminPanel();
+    } else {
+      showAlert('danger', result.message || 'Error al eliminar usuario');
+    }
+  } catch (error) {
+    console.error('Error al eliminar usuario:', error);
+    showAlert('danger', 'Error al eliminar usuario');
   }
-  
-  // Mostrar mensaje de estado
-  console.log("Manejadores de notificaciones configurados según funciones disponibles");
 }

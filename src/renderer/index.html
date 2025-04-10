@@ -1,12 +1,12 @@
-<!-- src/renderer/index.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
-  <title>Servitecgas App - Gestión de Mantenimientos</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.azure.com https://*.microsoft.com;">
+  <title>Servitecgas - Gestión de Mantenimientos</title>
   <link rel="stylesheet" href="../../node_modules/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../../node_modules/bootstrap-icons/font/bootstrap-icons.css">
   <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
@@ -15,37 +15,38 @@
       <!-- Sidebar de navegación -->
       <div class="col-md-2 sidebar">
         <div class="sidebar-header">
-          <h3>GasTech App</h3>
+          <h3>Servitecgas</h3>
+          <!-- Espacio para indicador de sincronización -->
         </div>
         <ul class="nav flex-column">
           <li class="nav-item">
             <a class="nav-link active" href="#" data-section="dashboard">
-              Dashboard
+              <i class="bi bi-speedometer2 me-2"></i> Dashboard
             </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#" data-section="clients">
-              Clientes
+              <i class="bi bi-people me-2"></i> Clientes
             </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#" data-section="installations">
-              Instalaciones
+              <i class="bi bi-tools me-2"></i> Instalaciones
             </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#" data-section="maintenance">
-              Mantenimientos
+              <i class="bi bi-calendar-check me-2"></i> Mantenimientos
             </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#" data-section="notifications">
-              Notificaciones
+              <i class="bi bi-bell me-2"></i> Notificaciones
             </a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#" data-section="reports">
-              Reportes y Estadísticas
+              <i class="bi bi-bar-chart me-2"></i> Reportes
             </a>
           </li>
         </ul>
@@ -167,7 +168,7 @@
                 <!-- Aquí se agregarán dinámicamente los componentes -->
               </div>
               <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="addComponentBtn">
-                Agregar Componente
+                <i class="bi bi-plus-circle me-1"></i> Agregar Componente
               </button>
             </div>
             
@@ -245,6 +246,55 @@
     </div>
   </div>
 
+  <!-- Modal de mantenimiento -->
+  <div class="modal fade" id="maintenanceModal" tabindex="-1" aria-labelledby="maintenanceModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="maintenanceModalLabel">Registrar Mantenimiento</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="maintenanceForm">
+            <input type="hidden" id="maintenanceInstallationId">
+            <input type="hidden" id="maintenanceComponentId">
+            
+            <div class="mb-3">
+              <label for="maintenanceClient" class="form-label">Cliente</label>
+              <input type="text" class="form-control" id="maintenanceClient" readonly>
+            </div>
+            
+            <div class="mb-3">
+              <label for="maintenanceComponent" class="form-label">Componente</label>
+              <input type="text" class="form-control" id="maintenanceComponent" readonly>
+            </div>
+            
+            <div class="mb-3">
+              <label for="maintenanceDate" class="form-label">Fecha de Mantenimiento</label>
+              <input type="date" class="form-control" id="maintenanceDate" required>
+            </div>
+            
+            <div class="mb-3">
+              <label for="maintenanceNotes" class="form-label">Notas</label>
+              <textarea class="form-control" id="maintenanceNotes" rows="3"></textarea>
+            </div>
+            
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="sendMaintenanceNotification">
+              <label class="form-check-label" for="sendMaintenanceNotification">
+                Enviar notificación al cliente
+              </label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="registerMaintenanceBtn">Registrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Template para componente -->
   <template id="componentTemplate">
     <div class="component-item card mb-2">
@@ -289,7 +339,7 @@
           <textarea class="form-control component-notes" rows="2"></textarea>
         </div>
         <button type="button" class="btn btn-sm btn-outline-danger remove-component-btn">
-          Eliminar Componente
+          <i class="bi bi-trash me-1"></i> Eliminar Componente
         </button>
       </div>
     </div>

@@ -1,26 +1,33 @@
 {
-    "name": "gas-tech-app",
+    "name": "servitecgas",
     "version": "1.0.0",
     "description": "Aplicación para técnicos de gas para gestionar mantenimientos y enviar notificaciones a clientes",
     "main": "src/main/index.js",
     "scripts": {
         "start": "electron .",
+        "dev": "cross-env NODE_ENV=development electron .",
         "build": "electron-builder",
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "pack": "electron-builder --dir",
+        "dist": "electron-builder",
+        "postinstall": "electron-builder install-app-deps"
     },
     "author": "",
     "license": "MIT",
     "devDependencies": {
-        "electron": "^29.1.0",
-        "electron-builder": "^24.13.1"
+        "cross-env": "^7.0.3",
+        "electron": "^29.4.6",
+        "electron-builder": "^24.13.3"
     },
     "dependencies": {
-        "bootstrap": "^5.3.2",
-        "chart.js": "^4.0.0",
+        "axios": "^1.6.2",
+        "bootstrap": "^5.3.5",
+        "bootstrap-icons": "^1.11.3",
+        "chart.js": "^4.4.8",
+        "crypto": "^1.0.1",
         "csv-stringify": "^6.4.0",
-        "electron-store": "^8.1.0",
+        "electron-store": "^8.2.0",
         "exceljs": "^4.3.0",
-        "fix": "^0.0.6",
+        "jwt-decode": "^4.0.0",
         "moment": "^2.30.1",
         "node-cron": "^3.0.3",
         "pdfkit": "^0.13.0",
@@ -29,16 +36,45 @@
         "whatsapp-web.js": "^1.23.0"
     },
     "build": {
-        "appId": "com.gastech.app",
-        "productName": "GasTech App",
+        "appId": "com.servitecgas.app",
+        "productName": "Servitecgas",
+        "files": [
+            "src/**/*",
+            "node_modules/**/*",
+            "package.json"
+        ],
+        "directories": {
+            "buildResources": "assets"
+        },
+        "extraResources": [
+            "assets/**"
+        ],
+        "publish": null,
         "mac": {
-            "category": "public.app-category.utilities"
+            "category": "public.app-category.business",
+            "target": [
+                "dmg",
+                "zip"
+            ]
         },
         "win": {
-            "target": "nsis"
+            "target": [
+                "nsis",
+                "portable"
+            ]
         },
         "linux": {
-            "target": "AppImage"
+            "target": [
+                "AppImage",
+                "deb"
+            ],
+            "category": "Office"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "perMachine": false,
+            "deleteAppDataOnUninstall": true
         }
     }
 }

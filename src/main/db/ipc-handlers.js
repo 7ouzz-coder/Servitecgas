@@ -1,138 +1,307 @@
-// src/main/db/ipc-handlers.js - Manejadores de eventos IPC
-const { v4: uuidv4 } = require('uuid');
+const { recordChange, generateId } = require('./store');
+const { checkUpcomingMaintenance, calculateNextMaintenanceDate } = require('../services/maintenance');
+const { sendWhatsAppMessage } = require('../services/whatsapp');
 
-module.exports = function(ipcMain, store) {
+/**
+ * Configura los manejadores IPC para operaciones de base de datos
+ * @param {IpcMain} ipcMain - Instancia de ipcMain
+ * @param {Store} store - Instancia de la base de datos
+ */
+module.exports = function setupIpcHandlers(ipcMain, store) {
+  // ============================================================
   // Clientes
+  // ============================================================
+  
+  // Obtener todos los clientes
   ipcMain.handle('get-clients', () => {
     return store.get('clients') || [];
   });
 
+  // Agregar un cliente
   ipcMain.handle('add-client', (event, client) => {
     const clients = store.get('clients') || [];
     const newClient = {
       ...client,
-      id: client.id || uuidv4(),
-      createdAt: new Date().toISOString()
+      id: client.id || generateId(),
+      createdAt: new Date().toISOString(),
+      lastModified: new Date().toISOString(),
+      syncStatus: 'pending'
     };
+    
     const updatedClients = [...clients, newClient];
     store.set('clients', updatedClients);
+    
+    // Registrar cambio para sincronización
+    recordChange('client', 'create', newClient.id, newClient);
+    
     return newClient;
   });
 
+  // Actualizar un cliente
   ipcMain.handle('update-client', (event, client) => {
     const clients = store.get('clients') || [];
     const index = clients.findIndex(c => c.id === client.id);
+    
     if (index !== -1) {
-      clients[index] = client;
+      const updatedClient = {
+        ...clients[index],
+        ...client,
+        lastModified: new Date().toISOString(),
+        syncStatus: 'pending'
+      };
+      
+      clients[index] = updatedClient;
       store.set('clients', clients);
-      return client;
+      
+      // Registrar cambio para sincronización
+      recordChange('client', 'update', updatedClient.id, updatedClient);
+      
+      return updatedClient;
     }
+    
     return null;
   });
 
+  // Eliminar un cliente
   ipcMain.handle('delete-client', (event, clientId) => {
     const clients = store.get('clients') || [];
+    const clientToDelete = clients.find(c => c.id === clientId);
+    
+    if (!clientToDelete) {
+      return { success: false, message: 'Cliente no encontrado' };
+    }
+    
     const newClients = clients.filter(c => c.id !== clientId);
     store.set('clients', newClients);
     
     // También eliminar las instalaciones asociadas
     const installations = store.get('installations') || [];
+    const installationsToDelete = installations.filter(i => i.clientId === clientId);
     const newInstallations = installations.filter(i => i.clientId !== clientId);
     store.set('installations', newInstallations);
     
-    return true;
+    // Registrar cambio del cliente para sincronización
+    recordChange('client', 'delete', clientId, clientToDelete);
+    
+    // Registrar cambios de instalaciones eliminadas para sincronización
+    installationsToDelete.forEach(installation => {
+      recordChange('installation', 'delete', installation.id, installation);
+    });
+    
+    return { success: true };
   });
 
+  // ============================================================
   // Instalaciones
+  // ============================================================
+  
+  // Obtener todas las instalaciones
   ipcMain.handle('get-installations', () => {
     return store.get('installations') || [];
   });
 
+  // Agregar una instalación
   ipcMain.handle('add-installation', (event, installation) => {
     const installations = store.get('installations') || [];
+    
+    // Asignar IDs a componentes si no los tienen
+    const components = installation.components?.map(component => ({
+      ...component,
+      id: component.id || generateId()
+    })) || [];
+    
     const newInstallation = {
       ...installation,
-      id: installation.id || uuidv4(),
+      id: installation.id || generateId(),
       createdAt: new Date().toISOString(),
-      components: installation.components.map(component => ({
-        ...component,
-        id: component.id || uuidv4()
-      }))
+      lastModified: new Date().toISOString(),
+      syncStatus: 'pending',
+      components
     };
+    
     const updatedInstallations = [...installations, newInstallation];
     store.set('installations', updatedInstallations);
+    
+    // Registrar cambio para sincronización
+    recordChange('installation', 'create', newInstallation.id, newInstallation);
+    
     return newInstallation;
   });
 
+  // Actualizar una instalación
   ipcMain.handle('update-installation', (event, installation) => {
     const installations = store.get('installations') || [];
     const index = installations.findIndex(i => i.id === installation.id);
+    
     if (index !== -1) {
-      installations[index] = installation;
+      // Asegurarse de que los componentes tengan IDs
+      const components = installation.components?.map(component => ({
+        ...component,
+        id: component.id || generateId()
+      })) || [];
+      
+      const updatedInstallation = {
+        ...installations[index],
+        ...installation,
+        components,
+        lastModified: new Date().toISOString(),
+        syncStatus: 'pending'
+      };
+      
+      installations[index] = updatedInstallation;
       store.set('installations', installations);
-      return installation;
+      
+      // Registrar cambio para sincronización
+      recordChange('installation', 'update', updatedInstallation.id, updatedInstallation);
+      
+      return updatedInstallation;
     }
+    
     return null;
   });
 
+  // Eliminar una instalación
   ipcMain.handle('delete-installation', (event, installationId) => {
     const installations = store.get('installations') || [];
+    const installationToDelete = installations.find(i => i.id === installationId);
+    
+    if (!installationToDelete) {
+      return { success: false, message: 'Instalación no encontrada' };
+    }
+    
     const newInstallations = installations.filter(i => i.id !== installationId);
     store.set('installations', newInstallations);
-    return true;
+    
+    // Registrar cambio para sincronización
+    recordChange('installation', 'delete', installationId, installationToDelete);
+    
+    return { success: true };
   });
 
+  // ============================================================
   // Mantenimiento
+  // ============================================================
+  
+  // Obtener mantenimientos próximos
   ipcMain.handle('get-upcoming-maintenance', () => {
-    const installations = store.get('installations') || [];
-    const clients = store.get('clients') || [];
-    const today = new Date();
-    const upcomingMaintenance = [];
-    
-    installations.forEach(installation => {
-      if (!installation.components) return;
-      
-      installation.components.forEach(component => {
-        if (component.nextMaintenanceDate) {
-          const nextMaintenance = new Date(component.nextMaintenanceDate);
-          const diffDays = Math.floor((nextMaintenance - today) / (1000 * 60 * 60 * 24));
-          
-          // Considerar mantenimientos en los próximos 30 días
-          if (diffDays <= 30 && diffDays >= 0) {
-            const client = clients.find(c => c.id === installation.clientId);
-            
-            upcomingMaintenance.push({
-              clientName: client ? client.name : 'Cliente desconocido',
-              clientPhone: client ? client.phone : '',
-              address: installation.address,
-              componentName: component.name,
-              nextMaintenanceDate: component.nextMaintenanceDate,
-              daysLeft: diffDays,
-              clientId: installation.clientId,
-              installationId: installation.id,
-              componentId: component.id
-            });
-          }
-        }
-      });
-    });
-    
-    return upcomingMaintenance.sort((a, b) => a.daysLeft - b.daysLeft);
+    return checkUpcomingMaintenance(store, 30); // Próximos 30 días
   });
 
-  // WhatsApp
-  ipcMain.handle('send-whatsapp-message', (event, data) => {
-    const { phone, message } = data;
+  // Registrar un mantenimiento completado
+  ipcMain.handle('register-maintenance', (event, { installationId, componentId, maintenanceDate, notes }) => {
+    const installations = store.get('installations') || [];
+    const installationIndex = installations.findIndex(i => i.id === installationId);
     
-    // Este es un punto donde se integraría con el servicio de WhatsApp
-    // Por ahora, solo retornamos como si hubiera sido exitoso
-    return {
+    if (installationIndex === -1) {
+      return { success: false, message: 'Instalación no encontrada' };
+    }
+    
+    const installation = installations[installationIndex];
+    
+    if (!installation.components) {
+      return { success: false, message: 'La instalación no tiene componentes' };
+    }
+    
+    const componentIndex = installation.components.findIndex(c => c.id === componentId);
+    
+    if (componentIndex === -1) {
+      return { success: false, message: 'Componente no encontrado' };
+    }
+    
+    // Actualizar fechas de mantenimiento
+    const component = installation.components[componentIndex];
+    const lastMaintenanceDate = maintenanceDate || new Date().toISOString().split('T')[0];
+    const frequency = component.frequency || 12; // Frecuencia en meses
+    
+    const updatedComponent = {
+      ...component,
+      lastMaintenanceDate,
+      nextMaintenanceDate: calculateNextMaintenanceDate(lastMaintenanceDate, frequency),
+      maintenanceNotes: notes ? [...(component.maintenanceNotes || []), {
+        date: lastMaintenanceDate,
+        notes,
+        technician: 'Usuario actual' // En una implementación real, se tomaría del usuario autenticado
+      }] : component.maintenanceNotes
+    };
+    
+    // Actualizar componente en la instalación
+    installation.components[componentIndex] = updatedComponent;
+    
+    // Actualizar instalación
+    installations[installationIndex] = {
+      ...installation,
+      lastModified: new Date().toISOString(),
+      syncStatus: 'pending'
+    };
+    
+    store.set('installations', installations);
+    
+    // Registrar cambio para sincronización
+    recordChange('installation', 'update', installation.id, installations[installationIndex]);
+    
+    return { 
       success: true,
-      message: `Mensaje enviado a ${phone}`
+      installation: installations[installationIndex],
+      component: updatedComponent
     };
   });
 
+  // Calcular la fecha del próximo mantenimiento
+  ipcMain.handle('calculate-next-maintenance', (event, { lastMaintenanceDate, frequency }) => {
+    return calculateNextMaintenanceDate(lastMaintenanceDate, frequency);
+  });
+
+  // ============================================================
+  // WhatsApp
+  // ============================================================
+  
+  // Enviar mensaje de WhatsApp
+  ipcMain.handle('send-whatsapp-message', async (event, messageData) => {
+    try {
+      // Si es una solicitud de conexión, iniciar el proceso de autenticación
+      if (messageData.action === 'connect') {
+        return { success: true, message: 'Iniciando conexión con WhatsApp' };
+      }
+      
+      // Si es un mensaje normal, enviarlo
+      const result = await sendWhatsAppMessage(messageData.phone, messageData.message);
+      return result;
+    } catch (error) {
+      console.error('Error al enviar mensaje de WhatsApp:', error);
+      return { 
+        success: false, 
+        message: error.message 
+      };
+    }
+  });
+
+  // ============================================================
+  // Utilidades
+  // ============================================================
+  
+  // Generar ID único
+  ipcMain.handle('generate-id', () => {
+    return generateId();
+  });
+  
+  // Formatear fecha
+  ipcMain.handle('format-date', (event, dateString) => {
+    if (!dateString) return '';
+    
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString();
+    } catch (error) {
+      console.error('Error al formatear fecha:', error);
+      return dateString;
+    }
+  });
+
+  // ============================================================
   // Historial de mantenimientos
+  // ============================================================
+  
+  // Obtener historial de mantenimientos
   ipcMain.handle('get-maintenance-history', (event, filters = {}) => {
     const installations = store.get('installations') || [];
     const clients = store.get('clients') || [];
@@ -142,7 +311,10 @@ module.exports = function(ipcMain, store) {
     installations.forEach(installation => {
       if (!installation.components) return;
       
-      const client = clients.find(c => c.id === installation.clientId) || { name: 'Cliente desconocido' };
+      const client = clients.find(c => c.id === installation.clientId) || { 
+        name: 'Cliente desconocido',
+        id: installation.clientId
+      };
       
       installation.components.forEach(component => {
         // Solo considerar componentes con fecha de último mantenimiento
@@ -179,19 +351,46 @@ module.exports = function(ipcMain, store) {
           }
           
           if (includeRecord) {
-            maintenanceHistory.push({
-              maintenanceDate: component.lastMaintenanceDate,
-              nextMaintenanceDate: component.nextMaintenanceDate,
-              clientId: installation.clientId,
-              clientName: client.name,
-              installationId: installation.id,
-              installationType: installation.type || 'No especificado',
-              installationAddress: installation.address,
-              componentId: component.id,
-              componentName: component.name,
-              componentModel: component.model || '',
-              frequency: component.frequency || 12
-            });
+            // Revisar el historial de notas si existe
+            const maintenanceNotes = component.maintenanceNotes || [];
+            
+            // Si no hay notas específicas, crear un registro basado en la última fecha
+            if (maintenanceNotes.length === 0) {
+              maintenanceHistory.push({
+                maintenanceDate: component.lastMaintenanceDate,
+                nextMaintenanceDate: component.nextMaintenanceDate,
+                clientId: installation.clientId,
+                clientName: client.name,
+                installationId: installation.id,
+                installationType: installation.type || 'No especificado',
+                installationAddress: installation.address,
+                componentId: component.id,
+                componentName: component.name,
+                componentModel: component.model || '',
+                frequency: component.frequency || 12,
+                notes: '',
+                technician: 'No especificado'
+              });
+            } else {
+              // Si hay notas específicas, crear un registro para cada nota
+              maintenanceNotes.forEach(note => {
+                maintenanceHistory.push({
+                  maintenanceDate: note.date || component.lastMaintenanceDate,
+                  nextMaintenanceDate: component.nextMaintenanceDate,
+                  clientId: installation.clientId,
+                  clientName: client.name,
+                  installationId: installation.id,
+                  installationType: installation.type || 'No especificado',
+                  installationAddress: installation.address,
+                  componentId: component.id,
+                  componentName: component.name,
+                  componentModel: component.model || '',
+                  frequency: component.frequency || 12,
+                  notes: note.notes || '',
+                  technician: note.technician || 'No especificado'
+                });
+              });
+            }
           }
         }
       });
@@ -201,14 +400,16 @@ module.exports = function(ipcMain, store) {
     return maintenanceHistory.sort((a, b) => new Date(b.maintenanceDate) - new Date(a.maintenanceDate));
   });
 
-  // Generar reportes
+  // ============================================================
+  // Reportes
+  // ============================================================
+  
+  // Generar reporte
   ipcMain.handle('generate-report', async (event, { reportType, options }) => {
     try {
-      // Esta es una implementación simulada. En un caso real,
-      // aquí deberíamos utilizar bibliotecas como pdfkit, exceljs, etc.
-      // para generar reportes reales.
+      // Esta es una implementación simulada
+      // En una implementación real, aquí generarías el reporte y guardarías el archivo
       
-      // Simulación: Retornar detalles del reporte generado
       return {
         success: true,
         message: `Reporte ${reportType} generado correctamente`,
@@ -227,14 +428,16 @@ module.exports = function(ipcMain, store) {
     }
   });
 
+  // ============================================================
+  // Exportar/Importar datos
+  // ============================================================
+  
   // Exportar datos
   ipcMain.handle('export-data', async (event, { dataType, format }) => {
     try {
-      // Esta es una implementación simulada. En un caso real,
-      // aquí deberíamos generar los archivos de exportación según el formato
-      // solicitado (excel, csv, json) y guardarlos en el sistema.
+      // Esta es una implementación simulada
+      // En una implementación real, generarías y guardarías el archivo
       
-      // Obtener datos según el tipo
       let data;
       switch (dataType) {
         case 'clients':
@@ -244,7 +447,7 @@ module.exports = function(ipcMain, store) {
           data = store.get('installations') || [];
           break;
         case 'maintenance':
-          // Obtener solo datos de mantenimientos
+          // Obtener datos de mantenimientos
           const installations = store.get('installations') || [];
           data = [];
           installations.forEach(installation => {
@@ -273,9 +476,6 @@ module.exports = function(ipcMain, store) {
           };
           break;
       }
-      
-      // En una implementación real, aquí exportaríamos los datos al formato solicitado
-      // y guardaríamos el archivo usando dialog.showSaveDialog
       
       return {
         success: true,
