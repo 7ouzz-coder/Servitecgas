@@ -50,6 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
               case 'notifications':
                 loadNotifications();
                 break;
+              case 'reports':
+                loadReports();
+                break;
             }
           }
         });
@@ -148,8 +151,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   // Configurar manejadores de notificaciones
-  function setupNotificationHandlers() {
-    // Escuchar cuando hay mantenimientos próximos
+function setupNotificationHandlers() {
+  // Verificar si las funciones de API están disponibles
+  if (!window.api) {
+    console.error("API no disponible para configurar notificaciones");
+    return;
+  }
+
+  // Escuchar cuando hay mantenimientos próximos - Solo si la función existe
+  if (window.api.onMaintenanceDue) {
     window.api.onMaintenanceDue((maintenanceData) => {
       // Mostrar alerta para cada mantenimiento próximo
       if (Array.isArray(maintenanceData)) {
@@ -162,47 +172,72 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Actualizar la sección de notificaciones si está visible
       const notificationsSection = document.getElementById('notifications-section');
-      if (notificationsSection.classList.contains('active')) {
+      if (notificationsSection && notificationsSection.classList.contains('active')) {
         loadNotifications();
       }
     });
-    
-    // Escuchar cuando se importa la base de datos
+  } else {
+    console.log("Función onMaintenanceDue no disponible - saltando configuración");
+  }
+  
+  // Escuchar cuando se importa la base de datos - Solo si la función existe
+  if (window.api.onDatabaseImported) {
     window.api.onDatabaseImported(() => {
       // Recargar la sección actual
       const activeSection = document.querySelector('.content-section.active');
+      if (!activeSection) return;
+      
       const sectionId = activeSection.id.replace('-section', '');
       
       switch (sectionId) {
         case 'dashboard':
-          loadDashboard();
+          if (typeof loadDashboard === 'function') loadDashboard();
           break;
         case 'clients':
-          loadClients();
+          if (typeof loadClients === 'function') loadClients();
           break;
         case 'installations':
-          loadInstallations();
+          if (typeof loadInstallations === 'function') loadInstallations();
           break;
         case 'maintenance':
-          loadMaintenance();
+          if (typeof loadMaintenance === 'function') loadMaintenance();
           break;
         case 'notifications':
-          loadNotifications();
+          if (typeof loadNotifications === 'function') loadNotifications();
+          break;
+        case 'reports':
+          if (typeof loadReports === 'function') loadReports();
           break;
       }
     });
-    
-    // Eventos para WhatsApp
+  } else {
+    console.log("Función onDatabaseImported no disponible - saltando configuración");
+  }
+  
+  // Eventos para WhatsApp - Solo si las funciones existen
+  if (window.api.onWhatsAppQr) {
     window.api.onWhatsAppQr((qr) => {
       // Mostrar código QR para escanear
-      showWhatsAppQrModal(qr);
+      if (typeof showWhatsAppQrModal === 'function') {
+        showWhatsAppQrModal(qr);
+      } else {
+        console.log("Código QR de WhatsApp recibido, pero la función showWhatsAppQrModal no está disponible");
+      }
     });
-    
+  }
+  
+  if (window.api.onWhatsAppReady) {
     window.api.onWhatsAppReady(() => {
       showAlert('success', 'WhatsApp conectado correctamente');
     });
-    
+  }
+  
+  if (window.api.onWhatsAppAuthFailure) {
     window.api.onWhatsAppAuthFailure(() => {
       showAlert('danger', 'Error de autenticación en WhatsApp');
     });
   }
+  
+  // Mostrar mensaje de estado
+  console.log("Manejadores de notificaciones configurados según funciones disponibles");
+}
