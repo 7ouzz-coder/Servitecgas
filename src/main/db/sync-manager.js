@@ -6,47 +6,543 @@ const {
   setLastSyncTime 
 } = require('./store');
 const { getAuthToken } = require('../azure/auth');
-const apiClient = require('../azure/api');
+const azureSync = require('../azure/sync');
+const azureConfig = require('../azure/config');
+const os = require('os');
+const { v4: uuidv4 } = require('uuid');
 
 // Control de estado de sincronización
 let syncInProgress = false;
 let syncInterval = null;
+let deviceId = null;
 
 /**
  * Configura el gestor de sincronización
  * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
  */
 function setupSyncManager(mainWindow) {
+  // Inicializar identificador único para este dispositivo
+  initDeviceId();
+  
+  // Inicializar configuración de Azure
+  initAzureConfig();
+  
   // Manejadores IPC para sincronización
+  setupSyncHandlers(mainWindow);
+  
+  // Configurar sincronización automática periódica
+  setupAutoSync(mainWindow);
+  
+  // Escuchar eventos de conexión para sincronizar cuando se restablezca la conexión
+  setupConnectivityListeners(mainWindow);
+}
+
+/**
+ * Inicializa el ID de dispositivo
+ */
+function initDeviceId() {
+  try {
+    const store = setupStore();
+    deviceId = store.get('deviceId');
+    
+    // Si no existe, crear un nuevo ID de dispositivo
+    if (!deviceId) {
+      deviceId = generateDeviceId();
+      store.set('deviceId', deviceId);
+    }
+    
+    console.log('ID de dispositivo:', deviceId);
+  } catch (error) {
+    console.error('Error al inicializar ID de dispositivo:', error);
+    // Usar un ID aleatorio si hay error
+    deviceId = `device-${uuidv4()}`;
+  }
+}
+
+/**
+ * Genera un ID de dispositivo único
+ * @returns {string} - ID de dispositivo
+ */
+function generateDeviceId() {
+  try {
+    // Intentar generar un ID basado en el hardware
+    const networkInterfaces = os.networkInterfaces();
+    let macAddress = '';
+    
+    // Buscar una dirección MAC
+    Object.keys(networkInterfaces).forEach(interfaceName => {
+      const interfaces = networkInterfaces[interfaceName];
+      interfaces.forEach(interfaceInfo => {
+        if (!interfaceInfo.internal && interfaceInfo.mac && interfaceInfo.mac !== '00:00:00:00:00:00') {
+          macAddress = interfaceInfo.mac;
+        }
+      });
+    });
+    
+    if (macAddress) {
+      return `${os.hostname()}-${macAddress.replace(/:/g, '')}`;
+    }
+    
+    // Si no hay MAC, usar características del sistema
+    return `${os.hostname()}-${os.platform()}-${os.arch()}-${Math.floor(os.totalmem() / 1024 / 1024)}MB`;
+  } catch (error) {
+    console.error('Error al generar ID de dispositivo:', error);
+    // En caso de error, generar un ID aleatorio
+    return `device-${uuidv4()}`;
+  }
+}
+
+/**
+ * Inicializa la configuración de Azure
+ */
+function initAzureConfig() {
+  try {
+    // Cargar configuración
+    const config = azureConfig.initAzureConfig();
+    
+    // Configurar el módulo de sincronización
+    azureSync.setAzureConfig({
+      connectionString: config.connectionString,
+      containerName: config.containerName,
+      tableName: config.tableName,
+      maxRetries: config.maxRetries || 3
+    });
+    
+    console.log('Configuración de Azure inicializada');
+    
+    return config;
+  } catch (error) {
+    console.error('Error al inicializar configuración de Azure:', error);
+    return null;
+  }
+}
+
+/**
+ * Configura los manejadores IPC para la sincronización
+ * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
+ */
+function setupSyncHandlers(mainWindow) {
+  // Sincronizar datos
   ipcMain.handle('sync-data', async () => {
     return await synchronize(mainWindow);
   });
   
+  // Obtener estado de sincronización
   ipcMain.handle('get-sync-status', () => {
     const store = setupStore();
     const pendingChanges = store.get('pendingChanges') || [];
+    
     return {
-      lastSync: getLastSyncTime(),
+      lastSync: azureConfig.getLastSyncTime() || getLastSyncTime(),
       pendingChanges: pendingChanges.length,
-      syncInProgress
+      syncInProgress,
+      deviceId
     };
   });
   
-  // Configurar sincronización automática periódica (cada 10 minutos)
-  syncInterval = setInterval(() => {
-    if (!syncInProgress) {
-      synchronize(mainWindow)
-        .catch(error => {
-          console.error('Error en sincronización automática:', error);
-        });
-    }
-  }, 10 * 60 * 1000);
+  // Obtener configuración de Azure
+  ipcMain.handle('get-azure-config', () => {
+    return azureConfig.initAzureConfig();
+  });
   
-  // Escuchar eventos de conexión para sincronizar cuando se restablezca la conexión
+  // Actualizar configuración de Azure
+  ipcMain.handle('update-azure-config', async (event, newConfig) => {
+    try {
+      // Actualizar configuración
+      const updatedConfig = azureConfig.updateAzureConfig(newConfig);
+      
+      // Actualizar configuración en el módulo de sincronización
+      azureSync.setAzureConfig({
+        connectionString: updatedConfig.connectionString,
+        containerName: updatedConfig.containerName,
+        tableName: updatedConfig.tableName,
+        maxRetries: updatedConfig.maxRetries || 3
+      });
+      
+      // Actualizar intervalo de sincronización si cambió
+      if (syncInterval) {
+        clearInterval(syncInterval);
+      }
+      
+      if (updatedConfig.autoSyncEnabled) {
+        const intervalMs = Math.max(5, updatedConfig.syncIntervalMinutes || 10) * 60 * 1000;
+        syncInterval = setInterval(() => {
+          if (!syncInProgress) {
+            synchronize(mainWindow)
+              .catch(error => {
+                console.error('Error en sincronización automática:', error);
+              });
+          }
+        }, intervalMs);
+      }
+      
+      return { success: true, config: updatedConfig };
+    } catch (error) {
+      console.error('Error al actualizar configuración de Azure:', error);
+      return { 
+        success: false, 
+        message: `Error al actualizar configuración: ${error.message}` 
+      };
+    }
+  });
+  
+  // Verificar conexión con Azure
+  ipcMain.handle('check-azure-connection', async () => {
+    try {
+      // Intentar descargar algún dato para verificar
+      const config = azureConfig.initAzureConfig();
+      
+      if (!config.connectionString) {
+        return {
+          success: false,
+          message: 'No hay configuración de conexión. Configure la cadena de conexión de Azure.'
+        };
+      }
+      
+      // Actualizar configuración en el módulo de sincronización
+      azureSync.setAzureConfig({
+        connectionString: config.connectionString,
+        containerName: config.containerName,
+        tableName: config.tableName,
+        maxRetries: config.maxRetries || 3
+      });
+      
+      // Intentar subir un pequeño objeto para verificar la conexión
+      const testResult = await azureSync.logSyncEvent(
+        'system',
+        deviceId,
+        'connection-test',
+        { timestamp: new Date().toISOString() }
+      );
+      
+      if (testResult.success) {
+        return {
+          success: true,
+          message: 'Conexión exitosa con Azure Storage'
+        };
+      } else {
+        return {
+          success: false,
+          message: testResult.message || 'Error de conexión no especificado'
+        };
+      }
+    } catch (error) {
+      console.error('Error al verificar conexión con Azure:', error);
+      
+      // Determinar si es un error de autenticación
+      const isAuthError = error.message && (
+        error.message.includes('AuthenticationFailed') ||
+        error.message.includes('authentication') ||
+        error.message.toLowerCase().includes('signature')
+      );
+      
+      return {
+        success: false,
+        message: isAuthError ? 
+          'Error de autenticación. Verifique que la cadena de conexión sea correcta.' : 
+          `Error al verificar conexión: ${error.message}`,
+        isAuthError,
+        error: error.message
+      };
+    }
+  });
+  
+  // Forzar descarga desde Azure
+  ipcMain.handle('force-download-from-azure', async () => {
+    try {
+      if (syncInProgress) {
+        return { 
+          success: false, 
+          message: 'Hay una sincronización en progreso. Espere a que termine.' 
+        };
+      }
+      
+      syncInProgress = true;
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'downloading',
+          message: 'Descargando datos de Azure...'
+        });
+      }
+      
+      // Obtener el usuario actual
+      const authStatus = await getAuthToken();
+      if (!authStatus) {
+        return { 
+          success: false, 
+          message: 'No hay sesión activa. Inicie sesión para sincronizar.' 
+        };
+      }
+      
+      const userId = 'system'; // En una implementación real, usar el ID del usuario
+      
+      // Descargar datos
+      const downloadResult = await azureSync.downloadLatestData(userId);
+      
+      if (!downloadResult.success) {
+        if (mainWindow) {
+          mainWindow.webContents.send('sync-status-changed', { 
+            status: 'error',
+            message: downloadResult.message
+          });
+        }
+        
+        return downloadResult;
+      }
+      
+      // Verificar que hay datos
+      if (!downloadResult.data) {
+        return {
+          success: false,
+          message: 'No hay datos disponibles para descargar.'
+        };
+      }
+      
+      // Guardar datos descargados
+      const store = setupStore();
+      const { clients, installations } = downloadResult.data;
+      
+      if (Array.isArray(clients)) {
+        store.set('clients', clients);
+      }
+      
+      if (Array.isArray(installations)) {
+        store.set('installations', installations);
+      }
+      
+      // Actualizar timestamp de última sincronización
+      azureConfig.updateLastSyncTime(downloadResult.timestamp);
+      
+      // Limpiar cambios pendientes, ya que acabamos de reemplazar todo
+      store.set('pendingChanges', []);
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('database-imported');
+        mainWindow.webContents.send('sync-completed', {
+          success: true,
+          stats: { downloaded: 1 },
+          timestamp: downloadResult.timestamp
+        });
+        
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'completed',
+          message: 'Descarga completada'
+        });
+      }
+      
+      return {
+        success: true,
+        message: 'Descarga de datos completada correctamente',
+        timestamp: downloadResult.timestamp
+      };
+      
+    } catch (error) {
+      console.error('Error en descarga forzada:', error);
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'error',
+          message: `Error: ${error.message}`
+        });
+      }
+      
+      return { 
+        success: false, 
+        message: `Error en descarga forzada: ${error.message}` 
+      };
+    } finally {
+      syncInProgress = false;
+    }
+  });
+  
+  // Forzar subida a Azure
+  ipcMain.handle('force-upload-to-azure', async () => {
+    try {
+      if (syncInProgress) {
+        return { 
+          success: false, 
+          message: 'Hay una sincronización en progreso. Espere a que termine.' 
+        };
+      }
+      
+      syncInProgress = true;
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'uploading',
+          message: 'Subiendo datos a Azure...'
+        });
+      }
+      
+      // Obtener el usuario actual
+      const authStatus = await getAuthToken();
+      if (!authStatus) {
+        return { 
+          success: false, 
+          message: 'No hay sesión activa. Inicie sesión para sincronizar.' 
+        };
+      }
+      
+      const userId = 'system'; // En una implementación real, usar el ID del usuario
+      
+      // Obtener datos actuales
+      const store = setupStore();
+      const clients = store.get('clients') || [];
+      const installations = store.get('installations') || [];
+      
+      // Preparar datos para subir
+      const dataToUpload = { clients, installations };
+      
+      // Subir datos a Azure
+      const uploadResult = await azureSync.uploadData(dataToUpload, userId, deviceId);
+      
+      if (!uploadResult.success) {
+        if (mainWindow) {
+          mainWindow.webContents.send('sync-status-changed', { 
+            status: 'error',
+            message: uploadResult.message
+          });
+        }
+        
+        return uploadResult;
+      }
+      
+      // Actualizar timestamp de última sincronización
+      azureConfig.updateLastSyncTime(uploadResult.timestamp);
+      
+      // Limpiar cambios pendientes, ya que acabamos de subir todo
+      store.set('pendingChanges', []);
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('sync-completed', {
+          success: true,
+          stats: { uploaded: 1 },
+          timestamp: uploadResult.timestamp
+        });
+        
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'completed',
+          message: 'Subida completada'
+        });
+      }
+      
+      return {
+        success: true,
+        message: 'Subida de datos completada correctamente',
+        timestamp: uploadResult.timestamp
+      };
+      
+    } catch (error) {
+      console.error('Error en subida forzada:', error);
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'error',
+          message: `Error: ${error.message}`
+        });
+      }
+      
+      return { 
+        success: false, 
+        message: `Error en subida forzada: ${error.message}` 
+      };
+    } finally {
+      syncInProgress = false;
+    }
+  });
+  
+  // Activar/desactivar sincronización automática
+  ipcMain.handle('set-auto-sync', async (event, enabled) => {
+    try {
+      // Actualizar configuración
+      const config = azureConfig.initAzureConfig();
+      config.autoSyncEnabled = enabled;
+      azureConfig.updateAzureConfig(config);
+      
+      // Actualizar el intervalo de sincronización
+      if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+      }
+      
+      if (enabled) {
+        setupAutoSync(mainWindow);
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error al cambiar configuración de sincronización automática:', error);
+      return { 
+        success: false, 
+        message: `Error: ${error.message}` 
+      };
+    }
+  });
+  
+  // Restablecer estado de sincronización
+  ipcMain.handle('reset-sync-state', async () => {
+    try {
+      // Restablecer timestamp de última sincronización
+      azureConfig.updateLastSyncTime(null);
+      
+      // Limpiar cambios pendientes
+      const store = setupStore();
+      store.set('pendingChanges', []);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error al restablecer estado de sincronización:', error);
+      return { 
+        success: false, 
+        message: `Error: ${error.message}` 
+      };
+    }
+  });
+}
+
+/**
+ * Configura la sincronización automática
+ * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
+ */
+function setupAutoSync(mainWindow) {
+  // Limpiar intervalo existente si hay
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+  
+  // Obtener configuración
+  const config = azureConfig.initAzureConfig();
+  
+  // Si la sincronización automática está habilitada, configurar intervalo
+  if (config.autoSyncEnabled) {
+    // Intervalo mínimo: 5 minutos
+    const intervalMs = Math.max(5, config.syncIntervalMinutes || 10) * 60 * 1000;
+    
+    syncInterval = setInterval(() => {
+      if (!syncInProgress) {
+        synchronize(mainWindow)
+          .catch(error => {
+            console.error('Error en sincronización automática:', error);
+          });
+      }
+    }, intervalMs);
+    
+    console.log(`Sincronización automática configurada cada ${config.syncIntervalMinutes || 10} minutos`);
+  }
+}
+
+/**
+ * Configura los listeners de conectividad
+ * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
+ */
+function setupConnectivityListeners(mainWindow) {
   if (mainWindow) {
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow.webContents.executeJavaScript(`
         window.addEventListener('online', () => {
+          console.log('Conexión a Internet restablecida');
           window.api.syncData();
         });
       `);
@@ -79,84 +575,110 @@ async function synchronize(mainWindow) {
     }
     
     const store = setupStore();
-    const token = await getAuthToken();
     
-    if (!token) {
+    // Verificar si hay una configuración válida
+    if (!azureSync.isConfigValid()) {
       return { 
         success: false, 
-        message: 'No autenticado. Inicie sesión para sincronizar.' 
+        message: 'La configuración de Azure no es válida. Configure la sincronización en la sección de Azure.' 
       };
     }
     
-    // 1. Obtener cambios pendientes
-    const pendingChanges = store.get('pendingChanges') || [];
+    // Obtener datos actuales
+    const clients = store.get('clients') || [];
+    const installations = store.get('installations') || [];
     
-    // 2. Si hay cambios pendientes, enviarlos al servidor
-    let syncResults = { sent: 0, received: 0, conflicts: 0 };
+    // Obtener ID de usuario (en una implementación real, usar el ID real)
+    const userId = 'system';
     
-    if (pendingChanges.length > 0) {
+    // Preparar datos locales
+    const localData = {
+      clients,
+      installations,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    // Realizar sincronización
+    const syncResult = await azureSync.synchronize(localData, userId, deviceId);
+    
+    // Manejar resultado
+    if (syncResult.success) {
+      // Si estamos en modo offline, no actualizamos nada
+      if (syncResult.offline) {
+        if (mainWindow) {
+          mainWindow.webContents.send('sync-status-changed', { 
+            status: 'offline',
+            message: 'Trabajando en modo offline. Los cambios se sincronizarán cuando haya conexión.'
+          });
+        }
+        
+        return {
+          success: true,
+          offline: true,
+          message: 'Trabajando en modo offline'
+        };
+      }
+      
+      // Actualizar datos locales si es necesario
+      if (syncResult.data) {
+        // Actualizar clientes si hay cambios
+        if (syncResult.data.clients && 
+            JSON.stringify(syncResult.data.clients) !== JSON.stringify(clients)) {
+          store.set('clients', syncResult.data.clients);
+        }
+        
+        // Actualizar instalaciones si hay cambios
+        if (syncResult.data.installations && 
+            JSON.stringify(syncResult.data.installations) !== JSON.stringify(installations)) {
+          store.set('installations', syncResult.data.installations);
+        }
+        
+        // Notificar a la interfaz si hubo cambios
+        if (mainWindow && 
+            (JSON.stringify(syncResult.data.clients) !== JSON.stringify(clients) ||
+             JSON.stringify(syncResult.data.installations) !== JSON.stringify(installations))) {
+          mainWindow.webContents.send('database-imported');
+        }
+      }
+      
+      // Actualizar timestamp de última sincronización
+      azureConfig.updateLastSyncTime(syncResult.timestamp);
+      
+      // Limpiar cambios pendientes, ya que se han sincronizado
+      store.set('pendingChanges', []);
+      
+      // Notificar sincronización completada
       if (mainWindow) {
+        mainWindow.webContents.send('sync-completed', {
+          success: true,
+          timestamp: syncResult.timestamp
+        });
+        
         mainWindow.webContents.send('sync-status-changed', { 
-          status: 'sending-changes',
-          message: `Enviando ${pendingChanges.length} cambios...`
+          status: 'completed',
+          message: 'Sincronización completada'
         });
       }
       
-      // Enviar cambios al servidor
-      const result = await apiClient.syncChanges(token, pendingChanges);
-      syncResults.sent = result.processedCount || 0;
-      syncResults.conflicts = result.conflicts?.length || 0;
-      
-      // Manejar conflictos si los hay
-      if (result.conflicts && result.conflicts.length > 0) {
-        handleConflicts(result.conflicts);
+      return { 
+        success: true, 
+        message: 'Sincronización completada correctamente',
+        timestamp: syncResult.timestamp
+      };
+    } else {
+      // Notificar error
+      if (mainWindow) {
+        mainWindow.webContents.send('sync-status-changed', { 
+          status: 'error',
+          message: syncResult.message
+        });
       }
       
-      // Limpiar cambios enviados exitosamente
-      const remainingChanges = handleSyncResponse(pendingChanges, result);
-      store.set('pendingChanges', remainingChanges);
+      return { 
+        success: false, 
+        message: syncResult.message
+      };
     }
-    
-    // 3. Obtener cambios del servidor desde la última sincronización
-    const lastSync = getLastSyncTime();
-    
-    if (mainWindow) {
-      mainWindow.webContents.send('sync-status-changed', { 
-        status: 'receiving-changes',
-        message: 'Obteniendo cambios del servidor...'
-      });
-    }
-    
-    const serverChanges = await apiClient.getChanges(token, lastSync);
-    syncResults.received = serverChanges.length;
-    
-    // 4. Aplicar cambios del servidor localmente
-    if (serverChanges.length > 0) {
-      applyServerChanges(serverChanges);
-    }
-    
-    // 5. Actualizar timestamp de última sincronización
-    setLastSyncTime(new Date().toISOString());
-    
-    // 6. Notificar sincronización completada
-    if (mainWindow) {
-      mainWindow.webContents.send('sync-completed', {
-        success: true,
-        stats: syncResults,
-        timestamp: new Date().toISOString()
-      });
-      
-      mainWindow.webContents.send('sync-status-changed', { 
-        status: 'completed',
-        message: 'Sincronización completada'
-      });
-    }
-    
-    return { 
-      success: true, 
-      message: 'Sincronización completada',
-      stats: syncResults
-    };
   } catch (error) {
     console.error('Error en sincronización:', error);
     
@@ -175,168 +697,6 @@ async function synchronize(mainWindow) {
   } finally {
     syncInProgress = false;
   }
-}
-
-/**
- * Maneja la respuesta de sincronización para determinar qué cambios quedan pendientes
- * @param {Array} pendingChanges - Cambios pendientes enviados
- * @param {Object} syncResponse - Respuesta del servidor
- * @returns {Array} - Cambios que siguen pendientes
- */
-function handleSyncResponse(pendingChanges, syncResponse) {
-  const store = setupStore();
-  
-  // Si no hay información específica sobre éxitos/fallos, asumimos que todos fueron procesados
-  if (!syncResponse.succeeded && !syncResponse.failed) {
-    return [];
-  }
-  
-  // Filtrar los cambios que fallaron
-  return pendingChanges.filter(change => {
-    const changeId = `${change.entityType}-${change.entityId}-${change.operation}`;
-    return syncResponse.failed && syncResponse.failed.includes(changeId);
-  });
-}
-
-/**
- * Maneja conflictos de sincronización
- * @param {Array} conflicts - Conflictos reportados por el servidor
- */
-function handleConflicts(conflicts) {
-  const store = setupStore();
-  
-  conflicts.forEach(conflict => {
-    // En este ejemplo, aplicamos una estrategia simple: la versión del servidor gana
-    // En una implementación real, podrías notificar al usuario y permitirle decidir
-    
-    const { entityType, entityId, serverData } = conflict;
-    
-    // Actualizar los datos locales con la versión del servidor
-    if (entityType === 'client') {
-      const clients = store.get('clients') || [];
-      const index = clients.findIndex(c => c.id === entityId);
-      
-      if (index !== -1) {
-        clients[index] = serverData;
-        store.set('clients', clients);
-      }
-    } else if (entityType === 'installation') {
-      const installations = store.get('installations') || [];
-      const index = installations.findIndex(i => i.id === entityId);
-      
-      if (index !== -1) {
-        installations[index] = serverData;
-        store.set('installations', installations);
-      }
-    }
-    
-    // Registrar el conflicto para posible revisión
-    const conflictsLog = store.get('syncConflicts') || [];
-    conflictsLog.push({
-      ...conflict,
-      timestamp: new Date().toISOString(),
-      resolution: 'server-wins'
-    });
-    
-    store.set('syncConflicts', conflictsLog);
-  });
-}
-
-/**
- * Aplica los cambios recibidos del servidor a la base de datos local
- * @param {Array} changes - Cambios recibidos del servidor
- */
-function applyServerChanges(changes) {
-  const store = setupStore();
-  
-  // Procesamos los cambios por tipo y operación
-  changes.forEach(change => {
-    const { entityType, operation, entityId, data } = change;
-    
-    switch (entityType) {
-      case 'client':
-        applyClientChange(operation, entityId, data);
-        break;
-      case 'installation':
-        applyInstallationChange(operation, entityId, data);
-        break;
-      default:
-        console.warn(`Tipo de entidad desconocido en cambio del servidor: ${entityType}`);
-    }
-  });
-}
-
-/**
- * Aplica un cambio a un cliente
- * @param {string} operation - Operación ('create', 'update', 'delete')
- * @param {string} clientId - ID del cliente
- * @param {Object} data - Datos del cliente
- */
-function applyClientChange(operation, clientId, data) {
-  const store = setupStore();
-  const clients = store.get('clients') || [];
-  
-  switch (operation) {
-    case 'create':
-    case 'update':
-      const existingIndex = clients.findIndex(c => c.id === clientId);
-      
-      if (existingIndex !== -1) {
-        // Actualizar cliente existente
-        clients[existingIndex] = { ...data, syncStatus: 'synced' };
-      } else {
-        // Añadir nuevo cliente
-        clients.push({ ...data, syncStatus: 'synced' });
-      }
-      break;
-    
-    case 'delete':
-      // Eliminar cliente
-      const newClients = clients.filter(c => c.id !== clientId);
-      store.set('clients', newClients);
-      
-      // También eliminar sus instalaciones
-      const installations = store.get('installations') || [];
-      const newInstallations = installations.filter(i => i.clientId !== clientId);
-      store.set('installations', newInstallations);
-      return;
-  }
-  
-  store.set('clients', clients);
-}
-
-/**
- * Aplica un cambio a una instalación
- * @param {string} operation - Operación ('create', 'update', 'delete')
- * @param {string} installationId - ID de la instalación
- * @param {Object} data - Datos de la instalación
- */
-function applyInstallationChange(operation, installationId, data) {
-  const store = setupStore();
-  const installations = store.get('installations') || [];
-  
-  switch (operation) {
-    case 'create':
-    case 'update':
-      const existingIndex = installations.findIndex(i => i.id === installationId);
-      
-      if (existingIndex !== -1) {
-        // Actualizar instalación existente
-        installations[existingIndex] = { ...data, syncStatus: 'synced' };
-      } else {
-        // Añadir nueva instalación
-        installations.push({ ...data, syncStatus: 'synced' });
-      }
-      break;
-    
-    case 'delete':
-      // Eliminar instalación
-      const newInstallations = installations.filter(i => i.id !== installationId);
-      store.set('installations', newInstallations);
-      return;
-  }
-  
-  store.set('installations', installations);
 }
 
 /**

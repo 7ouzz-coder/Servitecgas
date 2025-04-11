@@ -1,4 +1,3 @@
-// src/preload/index.js - Puente seguro entre main y renderer (versión final)
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Exponer una API segura al proceso de renderizado
@@ -25,6 +24,16 @@ contextBridge.exposeInMainWorld('api', {
   // Eventos de autenticación
   onAuthChanged: (callback) => {
     ipcRenderer.on('auth-changed', (event, data) => callback(data));
+  },
+  
+  // Estado de sincronización
+  onSyncStatusChanged: (callback) => {
+    ipcRenderer.on('sync-status-changed', (event, data) => callback(data));
+  },
+  
+  // Sincronización completada
+  onSyncCompleted: (callback) => {
+    ipcRenderer.on('sync-completed', (event, data) => callback(data));
   },
   
   // ============================================================
@@ -68,6 +77,14 @@ contextBridge.exposeInMainWorld('api', {
   
   getUpcomingMaintenance: () => ipcRenderer.invoke('get-upcoming-maintenance'),
   registerMaintenance: (data) => ipcRenderer.invoke('register-maintenance', data),
+  calculateNextMaintenanceDate: (lastDate, frequency) => 
+    ipcRenderer.invoke('calculate-next-maintenance', { lastMaintenanceDate: lastDate, frequency }),
+  
+  // ============================================================
+  // WhatsApp
+  // ============================================================
+  
+  sendWhatsappMessage: (messageData) => ipcRenderer.invoke('send-whatsapp-message', messageData),
   
   // ============================================================
   // Utilidades
@@ -75,6 +92,20 @@ contextBridge.exposeInMainWorld('api', {
   
   generateId: () => ipcRenderer.invoke('generate-id'),
   formatDate: (date) => ipcRenderer.invoke('format-date', date),
+  
+  // ============================================================
+  // Sincronización con Azure
+  // ============================================================
+  
+  syncData: () => ipcRenderer.invoke('sync-data'),
+  getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
+  getAzureConfig: () => ipcRenderer.invoke('get-azure-config'),
+  updateAzureConfig: (config) => ipcRenderer.invoke('update-azure-config', config),
+  checkAzureConnection: () => ipcRenderer.invoke('check-azure-connection'),
+  forceDownloadFromAzure: () => ipcRenderer.invoke('force-download-from-azure'),
+  forceUploadToAzure: () => ipcRenderer.invoke('force-upload-to-azure'),
+  setAutoSync: (enabled) => ipcRenderer.invoke('set-auto-sync', enabled),
+  resetSyncState: () => ipcRenderer.invoke('reset-sync-state'),
   
   // ============================================================
   // Exportar/Importar Base de Datos

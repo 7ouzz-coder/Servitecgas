@@ -17,6 +17,10 @@
         <div class="sidebar-header">
           <h3>Servitecgas</h3>
           <!-- Espacio para indicador de sincronización -->
+          <div id="sync-status-indicator" class="mt-2 d-flex align-items-center">
+            <span class="badge bg-secondary me-1">Offline</span>
+            <small class="text-light">No sincronizado</small>
+          </div>
         </div>
         <ul class="nav flex-column">
           <li class="nav-item">
@@ -47,6 +51,11 @@
           <li class="nav-item">
             <a class="nav-link" href="#" data-section="reports">
               <i class="bi bi-bar-chart me-2"></i> Reportes
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-section="azure-settings">
+              <i class="bi bi-cloud me-2"></i> Azure
             </a>
           </li>
         </ul>
@@ -80,6 +89,10 @@
         
         <div id="reports-section" class="content-section">
           <!-- Gestión de reportes y estadísticas se cargará aquí -->
+        </div>
+        
+        <div id="azure-settings-section" class="content-section">
+          <!-- Configuración de Azure se cargará aquí -->
         </div>
       </div>
     </div>
@@ -295,6 +308,27 @@
     </div>
   </div>
 
+  <!-- Modal de Sincronización -->
+  <div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="syncModalLabel">Sincronización en Progreso</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center">
+          <div class="spinner-border text-primary mb-3" role="status">
+            <span class="visually-hidden">Sincronizando...</span>
+          </div>
+          <p id="syncStatusMessage">Sincronizando datos con Azure...</p>
+          <div class="progress mt-3 mb-3">
+            <div id="syncProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Template para componente -->
   <template id="componentTemplate">
     <div class="component-item card mb-2">
@@ -355,6 +389,7 @@
   <script src="components/maintenance.js"></script>
   <script src="components/notifications.js"></script>
   <script src="components/reports.js"></script>
+  <script src="components/azure-settings.js"></script>
   <script src="index.js"></script>
 </body>
 </html>

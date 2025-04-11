@@ -1,4 +1,3 @@
-// src/renderer/utils/ui.js - Utilidades para la UI
 // Función para formatear fechas
 function formatDate(dateString) {
   if (!dateString) return '-';

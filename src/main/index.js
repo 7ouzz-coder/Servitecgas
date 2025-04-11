@@ -1,8 +1,12 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { setupStore } = require('./db/store');
-const AuthService = require('./services/auth');
+const AuthService = require('./services/auth'); // Servicio de autenticación local
+const { setupSync, stopAutoSync } = require('./sync-integration'); // Integración con Azure
+const { setupWhatsAppService } = require('./services/whatsapp'); // Servicio de WhatsApp
 const { v4: uuidv4 } = require('uuid');
+// Cargar variables de entorno
+require('dotenv').config();
 
 // Variable para la ventana principal
 let mainWindow;
@@ -22,6 +26,8 @@ function createWindow() {
     }
   });
 
+  setupSync(mainWindow);
+
   // Cargar la pantalla de login
   mainWindow.loadFile(path.join(__dirname, '../renderer/login.html'));
 
@@ -37,7 +43,7 @@ function createWindow() {
 }
 
 // Iniciar la aplicación
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
   
   app.on('activate', () => {
@@ -50,6 +56,12 @@ app.whenReady().then(() => {
   // Inicializar servicio de autenticación
   authService = new AuthService(store);
   
+  // Configurar servicio de WhatsApp
+  setupWhatsAppService(mainWindow);
+  
+  // Configurar sincronización con Azure Storage
+  await setupSync(store, mainWindow);
+  
   // Configurar manejadores IPC
   setupHandlers(store);
 });
@@ -57,6 +69,8 @@ app.whenReady().then(() => {
 // Salir cuando todas las ventanas estén cerradas (excepto en macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    // Detener la sincronización automática antes de salir
+    stopAutoSync();
     app.quit();
   }
 });
@@ -181,7 +195,8 @@ function setupHandlers(store) {
       ...client,
       id: client.id || uuidv4(),
       createdAt: new Date().toISOString(),
-      createdBy: authService.getCurrentUser().id
+      createdBy: authService.getCurrentUser().id,
+      lastModified: new Date().toISOString()
     };
     
     const updatedClients = [...clients, newClient];
@@ -203,7 +218,7 @@ function setupHandlers(store) {
       const updatedClient = {
         ...clients[index],
         ...client,
-        updatedAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
         updatedBy: authService.getCurrentUser().id
       };
       
@@ -271,6 +286,7 @@ function setupHandlers(store) {
       id: installation.id || uuidv4(),
       createdAt: new Date().toISOString(),
       createdBy: authService.getCurrentUser().id,
+      lastModified: new Date().toISOString(),
       components
     };
     
@@ -300,7 +316,7 @@ function setupHandlers(store) {
         ...installations[index],
         ...installation,
         components,
-        updatedAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
         updatedBy: authService.getCurrentUser().id
       };
       
@@ -502,129 +518,44 @@ function setupHandlers(store) {
     }
   });
   
-  // ============================================================
-  // Exportar/Importar base de datos
-  // ============================================================
-  
-  ipcMain.handle('export-database', async () => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
+  ipcMain.handle('calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
+    if (!lastMaintenanceDate || !frequency) return null;
     
     try {
-      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-        title: 'Exportar Base de Datos',
-        defaultPath: `servitecgas-backup-${new Date().toISOString().slice(0, 10)}.json`,
-        filters: [
-          { name: 'Archivos JSON', extensions: ['json'] }
-        ]
-      });
-      
-      if (canceled || !filePath) {
-        return { success: false, message: 'Operación cancelada por el usuario' };
-      }
-      
-      // Obtener datos a exportar
-      const dataToExport = {
-        clients: store.get('clients') || [],
-        installations: store.get('installations') || [],
-        exportDate: new Date().toISOString(),
-        exportedBy: authService.getCurrentUser().username,
-        version: app.getVersion()
-      };
-      
-      // Guardar archivo
-      const fs = require('fs');
-      fs.writeFileSync(filePath, JSON.stringify(dataToExport, null, 2));
-      
-      return {
-        success: true,
-        message: 'Base de datos exportada correctamente',
-        filePath
-      };
+      const lastDate = new Date(lastMaintenanceDate);
+      const nextDate = new Date(lastDate);
+      nextDate.setMonth(nextDate.getMonth() + parseInt(frequency, 10));
+      return nextDate.toISOString().split('T')[0];
     } catch (error) {
-      console.error('Error en exportación:', error);
-      return {
-        success: false,
-        message: `Error: ${error.message}`
-      };
+      console.error('Error al calcular próxima fecha de mantenimiento:', error);
+      return null;
     }
   });
   
-  ipcMain.handle('import-database', async () => {
+  // ============================================================
+  // Sincronización
+  // ============================================================
+  
+  // Los manejadores de sincronización ya están configurados en sync-integration.js
+  
+  
+  // ============================================================
+  // WhatsApp
+  // ============================================================
+  
+  ipcMain.handle('send-whatsapp-message', (event, data) => {
     // Verificar autenticación
     if (!authService.checkAuth().isAuthenticated) {
       return { success: false, message: 'No autenticado' };
     }
     
-    try {
-      const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
-        title: 'Importar Base de Datos',
-        filters: [
-          { name: 'Archivos JSON', extensions: ['json'] }
-        ],
-        properties: ['openFile']
-      });
-      
-      if (canceled || filePaths.length === 0) {
-        return { success: false, message: 'Operación cancelada por el usuario' };
-      }
-      
-      // Leer archivo
-      const fs = require('fs');
-      const fileData = fs.readFileSync(filePaths[0], 'utf8');
-      const importedData = JSON.parse(fileData);
-      
-      // Validar estructura
-      if (!importedData.clients || !importedData.installations) {
-        return { success: false, message: 'Formato de archivo inválido' };
-      }
-      
-      // Realizar respaldo antes de importar
-      const backupDir = path.join(app.getPath('userData'), 'backups');
-      if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir, { recursive: true });
-      }
-      
-      const backupPath = path.join(
-        backupDir,
-        `backup-pre-import-${new Date().toISOString().replace(/:/g, '-')}.json`
-      );
-      
-      const backupData = {
-        clients: store.get('clients') || [],
-        installations: store.get('installations') || [],
-        backupDate: new Date().toISOString(),
-        backupReason: 'pre-import'
-      };
-      
-      fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
-      
-      // Importar datos
-      store.set('clients', importedData.clients);
-      store.set('installations', importedData.installations);
-      
-      // Notificar a la interfaz
-      if (mainWindow) {
-        mainWindow.webContents.send('database-imported');
-      }
-      
-      return {
-        success: true,
-        message: 'Base de datos importada correctamente',
-        stats: {
-          clients: importedData.clients.length,
-          installations: importedData.installations.length,
-          backupPath
-        }
-      };
-    } catch (error) {
-      console.error('Error en importación:', error);
-      return {
-        success: false,
-        message: `Error al importar: ${error.message}`
-      };
-    }
+    // Este manejador debe implementarse con la lógica específica de WhatsApp
+    // Aquí se puede usar el servicio setupWhatsAppService configurado anteriormente
+    
+    // Versión simplificada para este ejemplo
+    return {
+      success: true,
+      message: `Mensaje enviado a ${data.phone} con texto: ${data.message.substring(0, 20)}...`
+    };
   });
 }

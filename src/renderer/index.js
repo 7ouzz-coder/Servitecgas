@@ -28,6 +28,9 @@ function initApp() {
   // Cargar información del usuario
   loadUserInfo();
   
+  // Inicializar indicador de sincronización
+  initSyncIndicator();
+  
   // Cargar dashboard al inicio
   loadDashboard();
   
@@ -85,9 +88,15 @@ function initNavigation() {
             case 'reports':
               loadReports();
               break;
+            case 'azure-settings':
+              loadAzureSettings();
+              break;
           }
         }
       });
+      
+      // Guardar la sección activa para recargas
+      window.currentSection = targetSection;
     });
   });
 }
@@ -124,9 +133,182 @@ function showAlert(type, message, duration = 5000) {
   }, duration);
 }
 
+// Inicializar indicador de estado de sincronización
+function initSyncIndicator() {
+  const syncIndicator = document.getElementById('sync-status-indicator');
+  if (!syncIndicator) return;
+  
+  // Configurar estado inicial
+  updateSyncIndicator('unknown');
+  
+  // Escuchar cambios en el estado de sincronización
+  window.api.onSyncStatusChanged((data) => {
+    updateSyncIndicator(data.status, data.message);
+  });
+  
+  // Verificar estado actual de sincronización
+  window.api.getSyncStatus().then(status => {
+    const lastSync = status.lastSync ? new Date(status.lastSync) : null;
+    const now = new Date();
+    
+    if (!lastSync) {
+      updateSyncIndicator('never', 'Nunca sincronizado');
+    } else {
+      const diffHours = (now - lastSync) / (1000 * 60 * 60);
+      
+      if (diffHours < 1) {
+        updateSyncIndicator('synced', `Última sincronización: ${formatTimeAgo(lastSync)}`);
+      } else if (diffHours < 24) {
+        updateSyncIndicator('warning', `Última sincronización: ${formatTimeAgo(lastSync)}`);
+      } else {
+        updateSyncIndicator('outdated', `Última sincronización: ${formatTimeAgo(lastSync)}`);
+      }
+    }
+  }).catch(error => {
+    console.error('Error al obtener estado de sincronización:', error);
+    updateSyncIndicator('error', 'Error de sincronización');
+  });
+}
+
+// Actualizar indicador de sincronización
+function updateSyncIndicator(status, message = '') {
+  const syncIndicator = document.getElementById('sync-status-indicator');
+  if (!syncIndicator) return;
+  
+  const statusBadge = syncIndicator.querySelector('.badge');
+  const statusText = syncIndicator.querySelector('small');
+  
+  if (statusBadge && statusText) {
+    // Configurar según estado
+    switch (status) {
+      case 'in-progress':
+        statusBadge.className = 'badge bg-primary me-1';
+        statusBadge.textContent = 'Sincronizando';
+        statusText.textContent = message || 'Sincronización en progreso...';
+        break;
+      case 'completed':
+      case 'synced':
+        statusBadge.className = 'badge bg-success me-1';
+        statusBadge.textContent = 'Sincronizado';
+        statusText.textContent = message || 'Datos actualizados';
+        break;
+      case 'error':
+        statusBadge.className = 'badge bg-danger me-1';
+        statusBadge.textContent = 'Error';
+        statusText.textContent = message || 'Error de sincronización';
+        break;
+      case 'warning':
+        statusBadge.className = 'badge bg-warning text-dark me-1';
+        statusBadge.textContent = 'Atención';
+        statusText.textContent = message || 'Sincronización pendiente';
+        break;
+      case 'offline':
+        statusBadge.className = 'badge bg-secondary me-1';
+        statusBadge.textContent = 'Offline';
+        statusText.textContent = message || 'Trabajando sin conexión';
+        break;
+      case 'outdated':
+        statusBadge.className = 'badge bg-warning text-dark me-1';
+        statusBadge.textContent = 'Desactualizado';
+        statusText.textContent = message || 'Sincronización necesaria';
+        break;
+      case 'never':
+        statusBadge.className = 'badge bg-danger me-1';
+        statusBadge.textContent = 'No sincronizado';
+        statusText.textContent = message || 'Nunca sincronizado';
+        break;
+      case 'uploading':
+        statusBadge.className = 'badge bg-info me-1';
+        statusBadge.textContent = 'Subiendo';
+        statusText.textContent = message || 'Subiendo datos...';
+        break;
+      case 'downloading':
+        statusBadge.className = 'badge bg-info me-1';
+        statusBadge.textContent = 'Descargando';
+        statusText.textContent = message || 'Descargando datos...';
+        break;
+      default:
+        statusBadge.className = 'badge bg-secondary me-1';
+        statusBadge.textContent = 'Desconocido';
+        statusText.textContent = message || 'Estado de sincronización desconocido';
+    }
+  }
+}
+
+// Formatear tiempo relativo (ej: "hace 5 minutos")
+function formatTimeAgo(date) {
+  if (!date) return 'Desconocido';
+  
+  const now = new Date();
+  const diffMs = now - new Date(date);
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  
+  if (diffSec < 60) {
+    return 'hace unos segundos';
+  } else if (diffMin < 60) {
+    return `hace ${diffMin} ${diffMin === 1 ? 'minuto' : 'minutos'}`;
+  } else if (diffHour < 24) {
+    return `hace ${diffHour} ${diffHour === 1 ? 'hora' : 'horas'}`;
+  } else if (diffDay < 30) {
+    return `hace ${diffDay} ${diffDay === 1 ? 'día' : 'días'}`;
+  } else {
+    return new Date(date).toLocaleDateString();
+  }
+}
+
 // Configurar manejadores para modales
 function setupModalHandlers() {
-  // Agregar manejadores según necesidades...
+  // Modal de sincronización
+  window.api.onSyncStatusChanged((data) => {
+    const syncModal = document.getElementById('syncModal');
+    const syncModalInstance = bootstrap.Modal.getInstance(syncModal);
+    const statusMessage = document.getElementById('syncStatusMessage');
+    const progressBar = document.getElementById('syncProgressBar');
+    
+    // Si hay un cambio de estado, actualizar el modal según corresponda
+    if (data.status === 'in-progress' || data.status === 'uploading' || data.status === 'downloading') {
+      // Mostrar modal si no está visible
+      if (!syncModalInstance) {
+        const modal = new bootstrap.Modal(syncModal);
+        modal.show();
+      }
+      
+      // Actualizar mensaje
+      if (statusMessage) {
+        statusMessage.textContent = data.message || 'Sincronizando...';
+      }
+      
+      // Simular progreso
+      if (progressBar) {
+        let currentWidth = parseInt(progressBar.style.width) || 0;
+        if (currentWidth < 90) {
+          progressBar.style.width = `${currentWidth + 10}%`;
+          progressBar.setAttribute('aria-valuenow', currentWidth + 10);
+        }
+      }
+    } else if (data.status === 'completed' || data.status === 'error') {
+      // Completar barra de progreso
+      if (progressBar) {
+        progressBar.style.width = '100%';
+        progressBar.setAttribute('aria-valuenow', 100);
+      }
+      
+      // Actualizar mensaje
+      if (statusMessage) {
+        statusMessage.textContent = data.message || (data.status === 'completed' ? 'Sincronización completada' : 'Error en la sincronización');
+      }
+      
+      // Cerrar modal después de un tiempo
+      setTimeout(() => {
+        if (syncModalInstance) {
+          syncModalInstance.hide();
+        }
+      }, 1500);
+    }
+  });
 }
 
 // Manejar notificaciones y otros eventos
@@ -150,95 +332,88 @@ function setupNotificationHandlers() {
     showAlert('success', 'Base de datos importada correctamente');
     
     // Recargar la sección actual
-    const activeSection = document.querySelector('.content-section.active');
-    if (!activeSection) return;
-    
-    const sectionId = activeSection.id.replace('-section', '');
-    
-    switch (sectionId) {
-      case 'dashboard':
-        loadDashboard();
-        break;
-      case 'clients':
-        loadClients();
-        break;
-      case 'installations':
-        loadInstallations();
-        break;
-      case 'maintenance':
-        loadMaintenance();
-        break;
-      case 'notifications':
-        loadNotifications();
-        break;
-      case 'reports':
-        loadReports();
-        break;
+    reloadCurrentSection();
+  });
+  
+  // Escuchar cuando se completa una sincronización
+  window.api.onSyncCompleted((data) => {
+    if (data.success) {
+      showAlert('success', 'Sincronización completada correctamente');
+      
+      // Recargar la sección actual si hubo cambios
+      if (data.stats && (data.stats.sent > 0 || data.stats.received > 0)) {
+        reloadCurrentSection();
+      }
     }
   });
 }
 
+// Recargar la sección actual
+window.reloadCurrentSection = function() {
+  reloadCurrentSection();
+};
+
+function reloadCurrentSection() {
+  const activeSection = document.querySelector('.content-section.active');
+  if (!activeSection) return;
+  
+  const sectionId = activeSection.id.replace('-section', '');
+  
+  switch (sectionId) {
+    case 'dashboard':
+      loadDashboard();
+      break;
+    case 'clients':
+      loadClients();
+      break;
+    case 'installations':
+      loadInstallations();
+      break;
+    case 'maintenance':
+      loadMaintenance();
+      break;
+    case 'notifications':
+      loadNotifications();
+      break;
+    case 'reports':
+      loadReports();
+      break;
+    case 'azure-settings':
+      loadAzureSettings();
+      break;
+  }
+}
+
 // Configurar manejadores para exportar/importar base de datos
 function setupFileHandlers() {
-  // Agregar opciones al menú de usuario
-  const userMenu = document.querySelector('.user-menu');
-  if (!userMenu) return;
-  
-  // Si los elementos ya existen, no los añadimos de nuevo
-  if (document.getElementById('exportDbBtn')) return;
-  
-  const exportImportItems = `
-    <div class="dropdown-divider"></div>
-    <a href="#" class="dropdown-item" id="exportDbBtn">
-      <i class="bi bi-download me-2"></i> Exportar base de datos
-    </a>
-    <a href="#" class="dropdown-item" id="importDbBtn">
-      <i class="bi bi-upload me-2"></i> Importar base de datos
-    </a>
-  `;
-  
-  // Insertar antes del último divider (que debería ser el de logout)
-  const lastDivider = Array.from(userMenu.querySelectorAll('.dropdown-divider')).pop();
-  if (lastDivider) {
-    lastDivider.insertAdjacentHTML('beforebegin', exportImportItems);
-  } else {
-    userMenu.insertAdjacentHTML('beforeend', exportImportItems);
+  // Botón de sincronización manual (puede estar en cualquier parte de la interfaz)
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'syncNowBtn' || e.target.closest('#syncNowBtn')) {
+      e.preventDefault();
+      syncNow();
+    }
+  });
+}
+
+// Función para iniciar sincronización manual
+async function syncNow() {
+  try {
+    // Mostrar indicador
+    updateSyncIndicator('in-progress', 'Iniciando sincronización...');
+    
+    // Intentar sincronizar
+    const result = await window.api.syncData();
+    
+    if (result.success) {
+      showAlert('success', 'Sincronización completada correctamente');
+    } else {
+      showAlert('warning', `No se pudo sincronizar: ${result.message}`);
+    }
+  } catch (error) {
+    console.error('Error al sincronizar:', error);
+    showAlert('danger', `Error al sincronizar: ${error.message}`);
+    updateSyncIndicator('error', 'Error de sincronización');
   }
-  
-  // Configurar eventos
-  document.getElementById('exportDbBtn').addEventListener('click', async (e) => {
-    e.preventDefault();
-    
-    try {
-      showAlert('info', 'Preparando exportación de la base de datos...');
-      const result = await window.api.exportDatabase();
-      
-      if (result.success) {
-        showAlert('success', `Base de datos exportada correctamente a: ${result.filePath}`);
-      } else {
-        showAlert('danger', result.message);
-      }
-    } catch (error) {
-      showAlert('danger', `Error al exportar base de datos: ${error.message}`);
-    }
-  });
-  
-  document.getElementById('importDbBtn').addEventListener('click', async (e) => {
-    e.preventDefault();
-    
-    try {
-      showAlert('info', 'Selecciona el archivo a importar...');
-      const result = await window.api.importDatabase();
-      
-      if (result.success) {
-        showAlert('success', `Base de datos importada correctamente. Clientes: ${result.stats.clients}, Instalaciones: ${result.stats.installations}`);
-      } else {
-        showAlert('danger', result.message);
-      }
-    } catch (error) {
-      showAlert('danger', `Error al importar base de datos: ${error.message}`);
-    }
-  });
 }
 
 // Cargar información del usuario y configurar menú
@@ -264,6 +439,10 @@ function loadUserInfo() {
             <ul class="dropdown-menu dropdown-menu-dark text-small shadow user-menu" aria-labelledby="userDropdown">
               <li><a class="dropdown-item" href="#" id="userProfileMenuItem"><i class="bi bi-person me-2"></i> Perfil</a></li>
               ${userInfo.role === 'admin' ? '<li><a class="dropdown-item" href="#" id="adminMenuItem"><i class="bi bi-shield-lock me-2"></i> Administración</a></li>' : ''}
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" id="syncNowMenuItem"><i class="bi bi-cloud-arrow-up-fill me-2"></i> Sincronizar ahora</a></li>
+              <li><a class="dropdown-item" href="#" id="exportDbBtn"><i class="bi bi-download me-2"></i> Exportar base de datos</a></li>
+              <li><a class="dropdown-item" href="#" id="importDbBtn"><i class="bi bi-upload me-2"></i> Importar base de datos</a></li>
               <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item" href="#" id="logoutMenuItem"><i class="bi bi-box-arrow-right me-2"></i> Cerrar sesión</a></li>
             </ul>
@@ -298,6 +477,57 @@ function setupUserMenu() {
     adminMenuItem.addEventListener('click', (e) => {
       e.preventDefault();
       showAdminPanel();
+    });
+  }
+  
+  // Sincronización manual
+  const syncNowMenuItem = document.getElementById('syncNowMenuItem');
+  if (syncNowMenuItem) {
+    syncNowMenuItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      syncNow();
+    });
+  }
+  
+  // Exportar base de datos
+  const exportDbBtn = document.getElementById('exportDbBtn');
+  if (exportDbBtn) {
+    exportDbBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      
+      try {
+        showAlert('info', 'Preparando exportación de la base de datos...');
+        const result = await window.api.exportDatabase();
+        
+        if (result.success) {
+          showAlert('success', `Base de datos exportada correctamente a: ${result.filePath}`);
+        } else {
+          showAlert('danger', result.message);
+        }
+      } catch (error) {
+        showAlert('danger', `Error al exportar base de datos: ${error.message}`);
+      }
+    });
+  }
+  
+  // Importar base de datos
+  const importDbBtn = document.getElementById('importDbBtn');
+  if (importDbBtn) {
+    importDbBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      
+      try {
+        showAlert('info', 'Selecciona el archivo a importar...');
+        const result = await window.api.importDatabase();
+        
+        if (result.success) {
+          showAlert('success', `Base de datos importada correctamente. Clientes: ${result.stats.clients}, Instalaciones: ${result.stats.installations}`);
+        } else {
+          showAlert('danger', result.message);
+        }
+      } catch (error) {
+        showAlert('danger', `Error al importar base de datos: ${error.message}`);
+      }
     });
   }
   
