@@ -28,6 +28,9 @@ function initApp() {
   // Cargar información del usuario
   loadUserInfo();
   
+  // Registrar componentes y eventos de WhatsApp
+  registerWhatsAppComponent();
+
   // Inicializar indicador de sincronización
   initSyncIndicator();
   
@@ -131,6 +134,141 @@ function showAlert(type, message, duration = 5000) {
       bsAlert.close();
     }
   }, duration);
+}
+
+function registerWhatsAppComponent() {
+  // Asegurarse de que el evento sendWhatsAppMessage está correctamente configurado
+  const whatsappModal = document.getElementById('whatsappModal');
+  if (whatsappModal) {
+    const sendWhatsappBtn = document.getElementById('sendWhatsappBtn');
+    if (sendWhatsappBtn) {
+      sendWhatsappBtn.addEventListener('click', async () => {
+        try {
+          const phone = document.getElementById('whatsappRecipientPhone').value;
+          const message = document.getElementById('whatsappMessage').value;
+          
+          if (!phone || !message) {
+            showAlert('warning', 'El teléfono y el mensaje son obligatorios');
+            return;
+          }
+          
+          sendWhatsappBtn.disabled = true;
+          sendWhatsappBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Enviando...';
+          
+          const result = await window.api.sendWhatsAppMessage({
+            phone,
+            message
+          });
+          
+          if (result.success) {
+            showAlert('success', 'Mensaje enviado correctamente');
+            
+            // Cerrar modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('whatsappModal'));
+            if (modal) modal.hide();
+          } else {
+            showAlert('danger', `Error al enviar mensaje: ${result.message}`);
+          }
+        } catch (error) {
+          console.error('Error al enviar mensaje:', error);
+          showAlert('danger', `Error al enviar mensaje: ${error.message}`);
+        } finally {
+          sendWhatsappBtn.disabled = false;
+          sendWhatsappBtn.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar';
+        }
+      });
+    }
+  }
+  
+  // Escuchar eventos de WhatsApp
+  window.api.onWhatsAppQR((qr) => {
+    console.log('QR recibido de WhatsApp');
+    
+    // Mostrar el código QR en un modal si no estamos usando el componente React
+    if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+      showWhatsAppQrModal(qr);
+    }
+  });
+  
+  window.api.onWhatsAppReady(() => {
+    console.log('WhatsApp listo');
+    showAlert('success', 'WhatsApp conectado correctamente');
+  });
+  
+  window.api.onWhatsAppAuthFailure(() => {
+    console.log('Error de autenticación de WhatsApp');
+    showAlert('danger', 'Error de autenticación en WhatsApp');
+  });
+  
+  window.api.onWhatsAppDisconnected(() => {
+    console.log('WhatsApp desconectado');
+    showAlert('warning', 'WhatsApp se ha desconectado');
+  });
+}
+
+function showWhatsAppQrModal(qrData) {
+  const existingModal = document.getElementById('whatsappQrModal');
+  
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // Crear modal
+  const modalHtml = `
+    <div class="modal fade" id="whatsappQrModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Conectar WhatsApp</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body text-center">
+            <p>Escanea este código QR con WhatsApp en tu teléfono:</p>
+            <div id="qrcode-container" class="my-3 d-flex justify-content-center">
+              <div class="bg-white p-3 rounded">
+                <!-- El QR se insertará aquí -->
+              </div>
+            </div>
+            <p class="small text-muted">Abre WhatsApp en tu teléfono > Menú > WhatsApp Web > Escanear código QR</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar modal al DOM
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHtml;
+  document.body.appendChild(tempDiv.firstElementChild);
+  
+  // Generar QR
+  const qrContainer = document.getElementById('qrcode-container').querySelector('div');
+  try {
+    // Usar librería qrcode si está disponible
+    if (typeof qrcode !== 'undefined') {
+      const qr = qrcode(0, 'L');
+      qr.addData(qrData);
+      qr.make();
+      qrContainer.innerHTML = qr.createImgTag(5);
+    } else {
+      // Fallback si no está la librería
+      qrContainer.innerHTML = `
+        <div class="text-center">
+          <div style="font-size: 12px; overflow-wrap: break-word; max-width: 200px;">
+            ${qrData}
+          </div>
+          <p class="mt-2">Instala la librería qrcode para ver el código QR</p>
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.error("Error al generar QR:", error);
+    qrContainer.innerHTML = `<div class="alert alert-danger">Error al generar QR</div>`;
+  }
+  
+  // Mostrar modal
+  const qrModal = new bootstrap.Modal(document.getElementById('whatsappQrModal'));
+  qrModal.show();
 }
 
 // Inicializar indicador de estado de sincronización

@@ -36,6 +36,28 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('sync-completed', (event, data) => callback(data));
   },
   
+  // Eventos de WhatsApp
+  onWhatsAppQR: (callback) => {
+    ipcRenderer.on('whatsapp-qr', (event, qr) => callback(qr));
+  },
+  
+  onWhatsAppReady: (callback) => {
+    ipcRenderer.on('whatsapp-ready', () => callback());
+  },
+  
+  onWhatsAppAuthFailure: (callback) => {
+    ipcRenderer.on('whatsapp-auth-failure', () => callback());
+  },
+  
+  onWhatsAppDisconnected: (callback) => {
+    ipcRenderer.on('whatsapp-disconnected', () => callback());
+  },
+  
+  // Eliminar listeners (para limpieza)
+  removeListener: (channel, listener) => {
+    ipcRenderer.removeListener(channel, listener);
+  },
+  
   // ============================================================
   // Autenticación
   // ============================================================
@@ -84,7 +106,9 @@ contextBridge.exposeInMainWorld('api', {
   // WhatsApp
   // ============================================================
   
-  sendWhatsappMessage: (messageData) => ipcRenderer.invoke('send-whatsapp-message', messageData),
+  sendWhatsAppMessage: (messageData) => ipcRenderer.invoke('send-whatsapp-message', messageData),
+  isWhatsAppConnected: () => ipcRenderer.invoke('is-whatsapp-connected'),
+  logoutWhatsApp: () => ipcRenderer.invoke('logout-whatsapp'),
   
   // ============================================================
   // Utilidades
@@ -114,3 +138,6 @@ contextBridge.exposeInMainWorld('api', {
   exportDatabase: () => ipcRenderer.invoke('export-database'),
   importDatabase: () => ipcRenderer.invoke('import-database')
 });
+
+// Exponer el componente WhatsApp para uso en el renderer
+contextBridge.exposeInMainWorld('WhatsAppConnector', require('../renderer/components/whatsapp-connector').default);
