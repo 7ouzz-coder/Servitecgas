@@ -14,61 +14,14 @@ async function loadNotifications() {
     // Verificar estado actual de WhatsApp
     const isWhatsAppConnected = await window.api.isWhatsAppConnected().catch(() => false);
     
-    // Crear HTML con el componente de WhatsApp integrado
+    // Crear HTML con estructura base
     notificationsSection.innerHTML = `
       <h2 class="mb-4">Notificaciones</h2>
       
       <div class="row mb-4">
         <div class="col-md-6">
-          <div class="card mb-4">
-            <div class="card-header">
-              <h5 class="mb-0">Conexión WhatsApp</h5>
-            </div>
-            <div class="card-body">
-              <div id="whatsapp-status" class="text-center mb-3">
-                <span class="badge ${isWhatsAppConnected ? 'bg-success' : 'bg-secondary'} mb-2">
-                  ${isWhatsAppConnected ? 'Conectado' : 'No conectado'}
-                </span>
-                <p>${isWhatsAppConnected ? 
-                  'WhatsApp conectado correctamente' : 
-                  'Para enviar notificaciones, debes conectar WhatsApp'}</p>
-              </div>
-              
-              ${!isWhatsAppConnected ? `
-                <div id="qr-container" class="mb-3 text-center" style="display: none;">
-                  <div class="bg-white p-3 mx-auto d-inline-block">
-                    <div id="qr-code" style="width: 256px; height: 256px; margin: 0 auto;"></div>
-                  </div>
-                  <p class="mt-2">
-                    <small class="text-muted">Abre WhatsApp en tu teléfono > Menú > Dispositivos vinculados > Vincular un dispositivo</small>
-                  </p>
-                </div>
-                
-                <div class="text-center">
-                  <button id="connect-whatsapp-btn" class="btn btn-success">
-                    <i class="bi bi-whatsapp me-2"></i> Conectar WhatsApp
-                  </button>
-                  <div id="whatsapp-connecting" style="display: none;" class="mt-2">
-                    <div class="spinner-border text-success spinner-border-sm" role="status">
-                      <span class="visually-hidden">Conectando...</span>
-                    </div>
-                    <span class="ms-2">Conectando...</span>
-                  </div>
-                </div>
-              ` : `
-                <div class="text-center">
-                  <div class="alert alert-success">
-                    <i class="bi bi-check-circle-fill me-2"></i>
-                    WhatsApp conectado correctamente
-                  </div>
-                  <p class="text-muted">Ya puedes enviar notificaciones a tus clientes</p>
-                  <button id="logout-whatsapp-btn" class="btn btn-outline-danger btn-sm mt-2">
-                    <i class="bi bi-box-arrow-right me-2"></i> Cerrar sesión
-                  </button>
-                </div>
-              `}
-            </div>
-          </div>
+          <!-- Aquí irá el componente React para WhatsApp -->
+          <div id="whatsapp-connector-container"></div>
         </div>
         
         <div class="col-md-6">
@@ -111,16 +64,106 @@ async function loadNotifications() {
       </div>
     `;
     
+    // Renderizar el componente React si está disponible
+    if (window.ReactDOM && window.React && window.WhatsAppQRConnector) {
+      try {
+        const WhatsAppConnector = window.WhatsAppQRConnector;
+        const container = document.getElementById('whatsapp-connector-container');
+        if (container) {
+          window.ReactDOM.render(
+            window.React.createElement(WhatsAppConnector),
+            container
+          );
+          console.log("Componente React WhatsApp renderizado correctamente");
+        }
+      } catch (error) {
+        console.error("Error al renderizar componente React:", error);
+        document.getElementById('whatsapp-connector-container').innerHTML = `
+          <div class="alert alert-danger">
+            Error al inicializar componente de WhatsApp: ${error.message}
+          </div>
+        `;
+        // Usar método alternativo
+        renderNonReactWhatsAppConnector(isWhatsAppConnected);
+      }
+    } else {
+      console.log("React o ReactDOM no están disponibles, usando método alternativo");
+      // Renderizar versión alternativa sin React
+      renderNonReactWhatsAppConnector(isWhatsAppConnected);
+    }
+    
     // Configurar eventos
     setupNotificationsEvents();
     
   } catch (error) {
+    console.error("Error completo al cargar notificaciones:", error);
     notificationsSection.innerHTML = `
       <div class="alert alert-danger">
         Error al cargar notificaciones: ${error.message}
       </div>
     `;
   }
+}
+
+// Renderizar el conector WhatsApp sin React
+function renderNonReactWhatsAppConnector(isConnected) {
+  const container = document.getElementById('whatsapp-connector-container');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Conexión WhatsApp</h5>
+      </div>
+      <div class="card-body">
+        <div class="text-center mb-3">
+          <span class="badge ${isConnected ? 'bg-success' : 'bg-secondary'} mb-2">
+            ${isConnected ? 'Conectado' : 'No conectado'}
+          </span>
+          <p class="mb-3">${isConnected ? 'WhatsApp conectado correctamente' : 'No conectado a WhatsApp'}</p>
+        </div>
+        
+        <div id="qr-container" class="text-center my-3" style="display: none;">
+          <div class="d-inline-block bg-white p-3 rounded shadow-sm">
+            <div id="qr-code" style="width: 256px; height: 256px; margin: 0 auto;"></div>
+          </div>
+          <p class="text-muted mt-2 small">
+            Abre WhatsApp en tu teléfono &gt; Menú &gt; Dispositivos vinculados &gt; Vincular un dispositivo
+          </p>
+        </div>
+        
+        ${isConnected ? `
+          <div class="text-center">
+            <div class="alert alert-success mb-3">
+              <i class="bi bi-check-circle-fill me-2"></i>
+              WhatsApp conectado correctamente
+            </div>
+            <p class="text-muted">Ya puedes enviar notificaciones a tus clientes</p>
+            <button id="logout-whatsapp-btn" class="btn btn-outline-danger btn-sm mt-3">
+              <i class="bi bi-box-arrow-right me-2"></i>
+              Cerrar sesión de WhatsApp
+            </button>
+          </div>
+        ` : `
+          <div class="text-center">
+            <button id="connect-whatsapp-btn" class="btn btn-success">
+              <i class="bi bi-whatsapp me-2"></i>
+              Conectar WhatsApp
+            </button>
+            <div id="whatsapp-connecting" style="display: none;" class="mt-3">
+              <div class="spinner-border spinner-border-sm text-success me-2" role="status">
+                <span class="visually-hidden">Conectando...</span>
+              </div>
+              <span>Generando código QR...</span>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+  
+  // Configurar eventos para esta versión alternativa
+  setupWhatsAppConnector();
 }
 
 // Generar items de notificación a partir de mantenimientos
@@ -209,9 +252,6 @@ function renderNotificationItems(items) {
 
 // Configurar eventos para la sección de notificaciones
 function setupNotificationsEvents() {
-  // Configurar eventos de WhatsApp
-  setupWhatsAppConnector();
-  
   // Selector de plantilla
   const templateSelect = document.getElementById('templateSelect');
   const templatePreview = document.getElementById('templatePreview');
@@ -236,13 +276,27 @@ function setupNotificationsEvents() {
   // Botones de enviar notificación individual
   const sendNotificationButtons = document.querySelectorAll('.send-notification-btn');
   sendNotificationButtons.forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const clientId = button.getAttribute('data-client-id');
       const clientName = button.getAttribute('data-client-name');
       const clientPhone = button.getAttribute('data-client-phone');
       
       try {
         const maintenanceData = JSON.parse(button.getAttribute('data-maintenance'));
+        
+        // Verificar si WhatsApp está conectado
+        const isConnected = await window.api.isWhatsAppConnected().catch(() => false);
+        
+        if (!isConnected) {
+          showAlert('warning', 'Debes conectar WhatsApp antes de enviar mensajes', 5000);
+          
+          // Hacer scroll hasta la sección de conexión de WhatsApp
+          const whatsappCard = document.querySelector('.card-header h5');
+          if (whatsappCard && whatsappCard.innerText === 'Conexión WhatsApp') {
+            whatsappCard.scrollIntoView({ behavior: 'smooth' });
+          }
+          return;
+        }
         
         // Mostrar modal de WhatsApp
         document.getElementById('whatsappRecipientId').value = clientId;
@@ -271,25 +325,9 @@ function setupNotificationsEvents() {
         
         document.getElementById('whatsappMessage').value = message;
         
-        // Verificar si WhatsApp está conectado
-        window.api.isWhatsAppConnected().then(connected => {
-          if (connected) {
-            // Mostrar modal
-            const whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
-            whatsappModal.show();
-          } else {
-            showAlert('warning', 'Debes conectar WhatsApp antes de enviar mensajes', 5000);
-            
-            // Hacer scroll hasta la sección de conexión de WhatsApp
-            const whatsappCard = document.querySelector('.card-header:has(h5:contains("Conexión WhatsApp"))');
-            if (whatsappCard) {
-              whatsappCard.scrollIntoView({ behavior: 'smooth' });
-            }
-          }
-        }).catch(error => {
-          console.error("Error al verificar estado de WhatsApp:", error);
-          showAlert('danger', 'Error al verificar estado de WhatsApp', 5000);
-        });
+        // Mostrar modal
+        const whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
+        whatsappModal.show();
       } catch (error) {
         console.error("Error al preparar mensaje:", error);
         showAlert('danger', `Error al preparar mensaje: ${error.message}`, 5000);
@@ -306,45 +344,6 @@ function setupNotificationsEvents() {
       if (confirm(`¿Estás seguro de enviar notificaciones a ${totalClients} clientes?`)) {
         // En una implementación real, aquí enviaríamos cada mensaje
         showAlert('success', `Se han enviado ${totalClients} notificaciones correctamente`, 5000);
-      }
-    });
-  }
-  
-  // Configurar botón para enviar mensaje de WhatsApp
-  const sendWhatsappBtn = document.getElementById('sendWhatsappBtn');
-  if (sendWhatsappBtn) {
-    sendWhatsappBtn.addEventListener('click', async () => {
-      const phone = document.getElementById('whatsappRecipientPhone').value;
-      const message = document.getElementById('whatsappMessage').value;
-      
-      if (!phone || !message) {
-        showAlert('warning', 'Por favor complete todos los campos', 5000);
-        return;
-      }
-      
-      try {
-        sendWhatsappBtn.disabled = true;
-        sendWhatsappBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Enviando...';
-        
-        const result = await window.api.sendWhatsAppMessage({
-          phone: phone,
-          message: message
-        });
-        
-        if (result.success) {
-          showAlert('success', 'Mensaje enviado correctamente', 5000);
-          
-          // Cerrar modal
-          const modal = bootstrap.Modal.getInstance(document.getElementById('whatsappModal'));
-          modal.hide();
-        } else {
-          showAlert('danger', `Error al enviar mensaje: ${result.message}`, 5000);
-        }
-      } catch (error) {
-        showAlert('danger', `Error al enviar mensaje: ${error.message}`, 5000);
-      } finally {
-        sendWhatsappBtn.disabled = false;
-        sendWhatsappBtn.innerHTML = '<i class="bi bi-whatsapp"></i> Enviar';
       }
     });
   }
@@ -387,7 +386,10 @@ function setupWhatsAppConnector() {
         
         // Restaurar botón
         connectWhatsAppBtn.disabled = false;
-        connectingDiv.style.display = 'none';
+        const connectingDiv = document.getElementById('whatsapp-connecting');
+        if (connectingDiv) {
+          connectingDiv.style.display = 'none';
+        }
       }
     });
   }
@@ -428,7 +430,7 @@ function setupWhatsAppConnector() {
   setupWhatsAppStatusListeners();
 }
 
-// Reemplaza la función setupQRCodeListener con esta versión:
+// Configurar listener para recibir código QR
 function setupQRCodeListener() {
   // Eliminar listeners anteriores
   if (window.whatsAppQRListener) {
@@ -436,53 +438,45 @@ function setupQRCodeListener() {
   }
   
   // Nuevo listener
-  window.whatsAppQRListener = (event, qr) => {
-    console.log("Código QR recibido", qr?.length || 0);
+  window.whatsAppQRListener = (qr) => {
+    console.log("Código QR recibido en el renderer:", qr ? "String de " + qr.length + " caracteres" : "null");
     
     const qrContainer = document.getElementById('qr-container');
     const qrCode = document.getElementById('qr-code');
     const connectingDiv = document.getElementById('whatsapp-connecting');
-    const connectWhatsAppBtn = document.getElementById('connect-whatsapp-btn');
     
-    if (qrContainer && qrCode) {
+    if (qrContainer && qrCode && qr) {
       // Mostrar contenedor QR
       qrContainer.style.display = 'block';
       
-      try {
-        // Crear una imagen con el servicio externo de QR
-        qrCode.innerHTML = `
+      // Ocultar indicador de conectando
+      if (connectingDiv) connectingDiv.style.display = 'none';
+      
+      // Usar servicio API externo para generar imagen QR
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qr)}`;
+      
+      qrCode.innerHTML = `
+        <div style="padding: 15px; background-color: white; border-radius: 4px; display: inline-block; margin: 0 auto;">
           <img 
-            src="https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qr)}" 
-            width="256" 
-            height="256" 
-            alt="Código QR de WhatsApp"
-            style="background: white; padding: 8px;"
+            src="${qrImageUrl}" 
+            alt="WhatsApp QR Code" 
+            style="width: 256px; height: 256px; display: block;"
+            onerror="this.onerror=null; this.src=''; this.insertAdjacentHTML('afterend', '<div class=\\'alert alert-danger\\'>Error al cargar QR</div>');"
           />
-        `;
-        
-        // Actualizar estado y botones
-        if (connectingDiv) {
-          connectingDiv.style.display = 'none';
-        }
-        
-        if (connectWhatsAppBtn) {
-          connectWhatsAppBtn.disabled = false;
-          connectWhatsAppBtn.innerHTML = 'Esperando escaneo...';
-        }
-        
-        showAlert('info', 'Código QR generado. Escanea con WhatsApp en tu teléfono.', 5000);
-      } catch (error) {
-        console.error("Error al generar QR:", error);
-        qrCode.innerHTML = `
-          <div class="alert alert-danger">
-            Error al mostrar QR. Reinicia la aplicación.
-          </div>
-        `;
+        </div>
+      `;
+      
+      // También mostrar alerta 
+      showAlert('info', 'Código QR generado. Escanea con WhatsApp en tu teléfono.', 8000);
+    } else {
+      console.error("No se pudo mostrar el QR: contenedor no encontrado o QR no válido");
+      if (qrCode) {
+        qrCode.innerHTML = `<div class="alert alert-danger">No se pudo generar el código QR. Intenta nuevamente.</div>`;
       }
     }
   };
   
-  // Registrar nuevo listener
+  // Registrar listener
   window.api.onWhatsAppQR(window.whatsAppQRListener);
 }
 

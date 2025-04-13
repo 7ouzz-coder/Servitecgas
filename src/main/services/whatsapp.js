@@ -92,47 +92,28 @@ function initializeWhatsAppClient() {
     // Evento para mostrar el código QR
     whatsappClient.on('qr', (qr) => {
       console.log('==== CÓDIGO QR GENERADO ====');
+      console.log(`Longitud del QR: ${qr.length} caracteres`);
       
       // Generar QR en la terminal como respaldo
       qrcode.generate(qr, { small: true });
       
-      console.log('============================');
-      
-      // Enviar el QR a la interfaz de usuario
+      // Verificar que la ventana principal existe antes de enviar
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        console.log('Enviando código QR a la interfaz de usuario');
-        mainWindowRef.webContents.send('whatsapp-qr', qr);
-        
-        // Notificar al usuario
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'info',
-          message: 'Escanea el código QR con WhatsApp en tu teléfono'
-        });
+        try {
+          console.log('Enviando código QR a la interfaz de usuario');
+          mainWindowRef.webContents.send('whatsapp-qr', qr);
+        } catch (error) {
+          console.error('Error al enviar QR a la interfaz:', error);
+        }
+      } else {
+        console.error('La ventana principal no está disponible para enviar el QR');
       }
     });
     
-    // Evento cuando se guarda la sesión
-    whatsappClient.on('authenticated', (session) => {
-      console.log('WhatsApp autenticado');
-      
-      // Guardar datos de sesión a un archivo
-      if (sessionDataPath) {
-        fs.writeFileSync(sessionDataPath, JSON.stringify(session), 'utf8');
-      }
-      
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'success',
-          message: 'WhatsApp autenticado correctamente'
-        });
-      }
-    });
-    
-    // Evento cuando el cliente está listo
+    // El resto de eventos también deberían verificar la existencia de la ventana
     whatsappClient.on('ready', () => {
       console.log('Cliente WhatsApp listo');
       isWhatsAppReady = true;
-      initializationInProgress = false;
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
         mainWindowRef.webContents.send('whatsapp-ready');

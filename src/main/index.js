@@ -81,6 +81,93 @@ app.on('window-all-closed', () => {
 
 // Configurar manejadores IPC
 function setupHandlers(store) {
+  // Verificar si los handlers ya están configurados para evitar duplicación
+  if (global.handlersConfigured) {
+    console.log('Los manejadores IPC ya están configurados, saltando...');
+    return;
+  }
+  
+  // ============================================================
+  // Manejadores para WhatsApp
+  // ============================================================
+  
+  // Enviar mensaje de WhatsApp
+  ipcMain.handle('send-whatsapp-message', async (event, data) => {
+    // Verificar autenticación
+    if (!authService.checkAuth().isAuthenticated) {
+      return { success: false, message: 'No autenticado' };
+    }
+    
+    try {
+      // Si es una acción de conexión, iniciar el proceso de autenticación de WhatsApp
+      if (data.action === 'connect') {
+        // Esta acción inicia el proceso de autenticación de WhatsApp
+        if (mainWindow) {
+          mainWindow.webContents.send('show-alert', {
+            type: 'info',
+            message: 'Iniciando conexión con WhatsApp...'
+          });
+        }
+        return { success: true, message: 'Iniciando conexión con WhatsApp' };
+      }
+      
+      // Para enviar un mensaje, usamos la función del servicio
+      const result = await sendWhatsAppMessage(data.phone, data.message);
+      return result;
+    } catch (error) {
+      console.error('Error al procesar solicitud de WhatsApp:', error);
+      return { 
+        success: false, 
+        message: `Error en WhatsApp: ${error.message}` 
+      };
+    }
+  });
+  
+  // Verificar si WhatsApp está conectado
+  ipcMain.handle('is-whatsapp-connected', () => {
+    return isWhatsAppReady; // Esta variable debería estar definida en tu servicio de WhatsApp
+  });
+  
+  // Cerrar sesión de WhatsApp
+  ipcMain.handle('logout-whatsapp', async () => {
+    try {
+      if (!whatsappClient) {
+        return {
+          success: false,
+          message: 'No hay sesión activa de WhatsApp'
+        };
+      }
+      
+      await whatsappClient.logout();
+      
+      // Eliminar archivo de sesión si existe
+      if (sessionDataPath && fs.existsSync(sessionDataPath)) {
+        fs.unlinkSync(sessionDataPath);
+      }
+      
+      isWhatsAppReady = false;
+      
+      if (mainWindow) {
+        mainWindow.webContents.send('whatsapp-disconnected');
+        mainWindow.webContents.send('show-alert', {
+          type: 'info',
+          message: 'Sesión de WhatsApp cerrada correctamente'
+        });
+      }
+      
+      return {
+        success: true,
+        message: 'Sesión de WhatsApp cerrada correctamente'
+      };
+    } catch (error) {
+      console.error('Error al cerrar sesión de WhatsApp:', error);
+      return {
+        success: false,
+        message: `Error al cerrar sesión: ${error.message}`
+      };
+    }
+  });
+
   // ============================================================
   // Autenticación
   // ============================================================
@@ -536,40 +623,7 @@ function setupHandlers(store) {
     }
   });
   
-  // ============================================================
-  // WhatsApp
-  // ============================================================
-  
-  ipcMain.handle('send-whatsapp-message', async (event, data) => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
-    
-    try {
-      // Si es una acción de conexión
-      if (data.action === 'connect') {
-        // Esta acción inicia el proceso de autenticación de WhatsApp
-        if (mainWindow) {
-          mainWindow.webContents.send('show-alert', {
-            type: 'info',
-            message: 'Iniciando conexión con WhatsApp...'
-          });
-        }
-        return { success: true, message: 'Iniciando conexión con WhatsApp' };
-      }
-      
-      // Para enviar un mensaje, usamos la función del servicio
-      const result = await sendWhatsAppMessage(data.phone, data.message);
-      return result;
-    } catch (error) {
-      console.error('Error al procesar solicitud de WhatsApp:', error);
-      return { 
-        success: false, 
-        message: `Error en WhatsApp: ${error.message}` 
-      };
-    }
-  });
+  global.handlersConfigured = true;
 
   // Los manejadores para sincronización son gestionados en sync-integration.js
 }

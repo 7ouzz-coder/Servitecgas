@@ -139,5 +139,16 @@ contextBridge.exposeInMainWorld('api', {
   importDatabase: () => ipcRenderer.invoke('import-database')
 });
 
-// Exponer el componente WhatsApp para uso en el renderer
-contextBridge.exposeInMainWorld('WhatsAppConnector', require('../renderer/components/whatsapp-connector').default);
+// Importar React y ReactDOM
+const React = require('react');
+const ReactDOM = require('react-dom');
+
+// Importar el componente WhatsApp
+const WhatsAppQRConnector = require('../renderer/components/WhatsAppQRConnector.jsx');
+
+// Exponer React y ReactDOM para uso en el renderer
+contextBridge.exposeInMainWorld('React', React);
+contextBridge.exposeInMainWorld('ReactDOM', ReactDOM);
+
+// Exponer el componente WhatsApp
+contextBridge.exposeInMainWorld('WhatsAppQRConnector', WhatsAppQRConnector.default);
