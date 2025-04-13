@@ -216,41 +216,47 @@ async function loadClients() {
     const saveClientBtn = document.getElementById('saveClientBtn');
     if (saveClientBtn) {
       saveClientBtn.addEventListener('click', async () => {
-        const clientForm = document.getElementById('clientForm');
-        
-        // Validación básica
-        if (!clientForm.checkValidity()) {
-          clientForm.reportValidity();
-          return;
-        }
-        
-        const clientId = document.getElementById('clientId').value;
-        const client = {
-          id: clientId || window.api.generateId(),
-          name: document.getElementById('clientName').value,
-          phone: document.getElementById('clientPhone').value,
-          email: document.getElementById('clientEmail').value,
-          notes: document.getElementById('clientNotes').value
-        };
-        
         try {
-          if (clientId) {
-            // Actualizar cliente existente
-            await window.api.updateClient(client);
-            showAlert('success', 'Cliente actualizado correctamente');
-          } else {
-            // Agregar nuevo cliente
-            await window.api.addClient(client);
-            showAlert('success', 'Cliente agregado correctamente');
+          const clientForm = document.getElementById('clientForm');
+          
+          // Validación básica
+          if (!clientForm.checkValidity()) {
+            clientForm.reportValidity();
+            return;
           }
           
-          // Cerrar modal y recargar lista
-          const modal = bootstrap.Modal.getInstance(document.getElementById('clientModal'));
-          modal.hide();
-          loadClients();
+          const clientId = document.getElementById('clientId').value;
           
+          // Crear objeto simple con solo propiedades necesarias
+          const client = {
+            id: clientId || null, // Si es null, el backend generará un ID
+            name: document.getElementById('clientName').value,
+            phone: document.getElementById('clientPhone').value,
+            email: document.getElementById('clientEmail').value,
+            notes: document.getElementById('clientNotes').value
+          };
+          
+          try {
+            if (clientId) {
+              // Actualizar cliente existente
+              await window.api.updateClient(client);
+              showAlert('success', 'Cliente actualizado correctamente');
+            } else {
+              // Agregar nuevo cliente
+              await window.api.addClient(client);
+              showAlert('success', 'Cliente agregado correctamente');
+            }
+            
+            // Cerrar modal y recargar lista
+            const modal = bootstrap.Modal.getInstance(document.getElementById('clientModal'));
+            modal.hide();
+            loadClients();
+          } catch (error) {
+            showAlert('danger', `Error al guardar cliente: ${error.message}`);
+          }
         } catch (error) {
-          showAlert('danger', `Error al guardar cliente: ${error.message}`);
+          console.error('Error en evento saveClientBtn:', error);
+          showAlert('danger', `Error al procesar formulario: ${error.message}`);
         }
       });
     }

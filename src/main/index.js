@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { setupStore } = require('./db/store');
 const AuthService = require('./services/auth'); // Servicio de autenticación local
-const { setupSync, stopAutoSync } = require('./sync-integration'); // Integración con Azure
 const { setupWhatsAppService } = require('./services/whatsapp'); // Servicio de WhatsApp
 const { v4: uuidv4 } = require('uuid');
 // Cargar variables de entorno
@@ -25,8 +24,6 @@ function createWindow() {
       nodeIntegration: false
     }
   });
-
-  setupSync(mainWindow);
 
   // Cargar la pantalla de login
   mainWindow.loadFile(path.join(__dirname, '../renderer/login.html'));
@@ -59,8 +56,14 @@ app.whenReady().then(async () => {
   // Configurar servicio de WhatsApp
   setupWhatsAppService(mainWindow);
   
-  // Configurar sincronización con Azure Storage
-  await setupSync(store, mainWindow);
+  // Configurar sincronización con Azure
+  const { setupSync } = require('./sync-integration');
+  try {
+    await setupSync(store, mainWindow);
+    console.log('Sincronización configurada correctamente');
+  } catch (error) {
+    console.error('Error al inicializar sincronización:', error);
+  }
   
   // Configurar manejadores IPC
   setupHandlers(store);
@@ -69,6 +72,7 @@ app.whenReady().then(async () => {
 // Salir cuando todas las ventanas estén cerradas (excepto en macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    const { stopAutoSync } = require('./sync-integration');
     // Detener la sincronización automática antes de salir
     stopAutoSync();
     app.quit();
@@ -533,29 +537,39 @@ function setupHandlers(store) {
   });
   
   // ============================================================
-  // Sincronización
-  // ============================================================
-  
-  // Los manejadores de sincronización ya están configurados en sync-integration.js
-  
-  
-  // ============================================================
   // WhatsApp
   // ============================================================
   
-  ipcMain.handle('send-whatsapp-message', (event, data) => {
+  ipcMain.handle('send-whatsapp-message', async (event, data) => {
     // Verificar autenticación
     if (!authService.checkAuth().isAuthenticated) {
       return { success: false, message: 'No autenticado' };
     }
     
-    // Este manejador debe implementarse con la lógica específica de WhatsApp
-    // Aquí se puede usar el servicio setupWhatsAppService configurado anteriormente
-    
-    // Versión simplificada para este ejemplo
-    return {
-      success: true,
-      message: `Mensaje enviado a ${data.phone} con texto: ${data.message.substring(0, 20)}...`
-    };
+    try {
+      // Si es una acción de conexión
+      if (data.action === 'connect') {
+        // Esta acción inicia el proceso de autenticación de WhatsApp
+        if (mainWindow) {
+          mainWindow.webContents.send('show-alert', {
+            type: 'info',
+            message: 'Iniciando conexión con WhatsApp...'
+          });
+        }
+        return { success: true, message: 'Iniciando conexión con WhatsApp' };
+      }
+      
+      // Para enviar un mensaje, usamos la función del servicio
+      const result = await sendWhatsAppMessage(data.phone, data.message);
+      return result;
+    } catch (error) {
+      console.error('Error al procesar solicitud de WhatsApp:', error);
+      return { 
+        success: false, 
+        message: `Error en WhatsApp: ${error.message}` 
+      };
+    }
   });
+
+  // Los manejadores para sincronización son gestionados en sync-integration.js
 }

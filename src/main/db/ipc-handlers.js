@@ -8,9 +8,7 @@ const { sendWhatsAppMessage } = require('../services/whatsapp');
  * @param {Store} store - Instancia de la base de datos
  */
 module.exports = function setupIpcHandlers(ipcMain, store) {
-  // ============================================================
-  // Clientes
-  // ============================================================
+  // <--Clientes-->
   
   // Obtener todos los clientes
   ipcMain.handle('get-clients', () => {
@@ -19,22 +17,35 @@ module.exports = function setupIpcHandlers(ipcMain, store) {
 
   // Agregar un cliente
   ipcMain.handle('add-client', (event, client) => {
-    const clients = store.get('clients') || [];
-    const newClient = {
-      ...client,
-      id: client.id || generateId(),
-      createdAt: new Date().toISOString(),
-      lastModified: new Date().toISOString(),
-      syncStatus: 'pending'
-    };
-    
-    const updatedClients = [...clients, newClient];
-    store.set('clients', updatedClients);
-    
-    // Registrar cambio para sincronización
-    recordChange('client', 'create', newClient.id, newClient);
-    
-    return newClient;
+    try {
+      // Verificar autenticación
+      if (!authService.checkAuth().isAuthenticated) {
+        return { success: false, message: 'No autenticado' };
+      }
+      
+      const clients = store.get('clients') || [];
+      
+      // Crear una versión limpia del cliente que solo contenga datos serializables
+      const cleanClient = {
+        id: client.id || uuidv4(),
+        name: client.name || '',
+        phone: client.phone || '',
+        email: client.email || '',
+        notes: client.notes || '',
+        // Añade otras propiedades que necesites
+        createdAt: new Date().toISOString(),
+        createdBy: authService.getCurrentUser().id,
+        lastModified: new Date().toISOString()
+      };
+      
+      const updatedClients = [...clients, cleanClient];
+      store.set('clients', updatedClients);
+      
+      return cleanClient;
+    } catch (error) {
+      console.error('Error al añadir cliente:', error);
+      return { success: false, message: `Error al guardar cliente: ${error.message}` };
+    }
   });
 
   // Actualizar un cliente

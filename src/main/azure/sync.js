@@ -58,11 +58,51 @@ async function initAzureClients() {
         // Verificar/crear el contenedor
         const containerClient = blobServiceClient.getContainerClient(AZURE_CONTAINER_NAME);
         
+        // Intentar crear el contenedor si no existe
+        try {
+            console.log(`Verificando si existe el contenedor: ${AZURE_CONTAINER_NAME}`);
+            const containerExists = await executeWithRetry(
+                async () => {
+                    const properties = await containerClient.getProperties();
+                    return true;
+                },
+                'check container exists',
+                1
+            ).catch(() => false);
+            
+            if (!containerExists) {
+                console.log(`Creando contenedor: ${AZURE_CONTAINER_NAME}`);
+                await executeWithRetry(
+                    () => containerClient.create({ access: 'private' }),
+                    'create container'
+                );
+                console.log(`Contenedor creado: ${AZURE_CONTAINER_NAME}`);
+            }
+        } catch (error) {
+            console.log(`Error al verificar o crear el contenedor: ${error.message}`);
+            // Seguimos adelante, podría ser un problema de permisos
+        }
+        
         // Crear cliente de tabla
         const tableClient = TableClient.fromConnectionString(
             AZURE_STORAGE_CONNECTION_STRING,
             AZURE_TABLE_NAME
         );
+
+        // Intentar crear la tabla si no existe
+        try {
+            console.log(`Verificando si existe la tabla: ${AZURE_TABLE_NAME}`);
+            await executeWithRetry(
+                () => tableClient.createTable(),
+                'create table',
+                1
+            );
+            console.log(`Tabla creada o ya existente: ${AZURE_TABLE_NAME}`);
+        } catch (error) {
+            if (error.statusCode !== 409) { // 409 = ya existe, lo que está bien
+                console.log(`Error al crear tabla: ${error.message}`);
+            }
+        }
 
         return {
             blobServiceClient,
