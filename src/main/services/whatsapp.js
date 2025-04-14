@@ -11,7 +11,7 @@ let isWhatsAppReady = false;
 let sessionDataPath = null;
 let mainWindowRef = null;
 let initializationInProgress = false;
-let autoInitOnStartup = false; // Nuevo flag para controlar la inicialización automática
+let autoInitOnStartup = false; // Flag para controlar la inicialización automática
 
 /**
  * Configura el servicio de WhatsApp
@@ -50,51 +50,92 @@ function setupWhatsAppService(mainWindow) {
 function initializeWhatsAppClient() {
   if (initializationInProgress) {
     console.log('Inicialización de WhatsApp ya en progreso');
+    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+      mainWindowRef.webContents.send('show-alert', {
+        type: 'warning',
+        message: 'Ya hay una inicialización de WhatsApp en progreso'
+      });
+    }
     return;
   }
   
+  console.log('Iniciando proceso de inicialización de WhatsApp');
   initializationInProgress = true;
   
   try {
+    // Notificar al frontend que estamos iniciando
+    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+      mainWindowRef.webContents.send('whatsapp-initialization-started');
+    }
+    
     // Verificar si hay una sesión guardada
     let sessionData = null;
-    if (fs.existsSync(sessionDataPath)) {
+    const sessionExists = fs.existsSync(sessionDataPath);
+    
+    console.log(`Verificando sesión de WhatsApp (existe: ${sessionExists})`);
+    
+    if (sessionExists) {
       try {
-        sessionData = JSON.parse(fs.readFileSync(sessionDataPath, 'utf8'));
-        console.log('Sesión de WhatsApp encontrada');
+        const sessionContent = fs.readFileSync(sessionDataPath, 'utf8');
+        console.log(`Sesión leída, longitud: ${sessionContent.length} caracteres`);
+        sessionData = JSON.parse(sessionContent);
+        console.log('Sesión de WhatsApp encontrada y parseada correctamente');
       } catch (error) {
         console.error('Error al leer datos de sesión de WhatsApp:', error);
         // Si hay error, eliminamos el archivo corrupto
-        fs.unlinkSync(sessionDataPath);
+        try {
+          fs.unlinkSync(sessionDataPath);
+          console.log('Archivo de sesión corrupto eliminado');
+        } catch (unlinkError) {
+          console.error('Error al eliminar archivo de sesión corrupto:', unlinkError);
+        }
       }
+    } else {
+      console.log('No se encontró archivo de sesión existente, se creará uno nuevo');
     }
     
     // Destruir cliente existente si hay uno
     if (whatsappClient) {
+      console.log('Destruyendo cliente WhatsApp existente');
       try {
         whatsappClient.destroy().catch(err => console.error('Error al destruir cliente anterior:', err));
         whatsappClient = null;
+        console.log('Cliente WhatsApp anterior destruido');
       } catch (error) {
         console.error('Error al destruir cliente anterior:', error);
       }
     }
     
-    // Inicializar el cliente de WhatsApp
-    whatsappClient = new Client({
-      session: sessionData,
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas'
-        ]
-      }
-    });
+    // Log de opciones de puppet
+    const puppeteerOpts = {
+      headless: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas'
+      ]
+    };
     
-    // Evento para mostrar el código QR
+    console.log('Configurando puppeteer con opciones:', JSON.stringify(puppeteerOpts));
+    
+    // Inicializar el cliente de WhatsApp con sesión si existe
+    const clientOptions = {
+      puppeteer: puppeteerOpts
+    };
+    
+    if (sessionData) {
+      clientOptions.session = sessionData;
+      console.log('Usando sesión existente para inicializar WhatsApp');
+    } else {
+      console.log('Inicializando WhatsApp sin sesión previa');
+    }
+    
+    console.log('Creando nueva instancia de Cliente WhatsApp');
+    whatsappClient = new Client(clientOptions);
+    
+    // Eventos con logging mejorado
     whatsappClient.on('qr', (qr) => {
       console.log('==== CÓDIGO QR GENERADO ====');
       console.log(`Longitud del QR: ${qr.length} caracteres`);
@@ -104,32 +145,43 @@ function initializeWhatsAppClient() {
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
         try {
           console.log('Enviando código QR a la interfaz de usuario');
-          mainWindowRef.webContents.send('whatsapp-qr', qr);
+          
+          // Enviar objeto con múltiples formatos para compatibilidad
+          mainWindowRef.webContents.send('whatsapp-qr', {
+            qrCode: qr,
+            qrLength: qr.length,
+            timestamp: new Date().toISOString(),
+            qrImageUrl: `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qr)}`
+          });
+          
+          console.log('Código QR enviado correctamente al frontend');
         } catch (error) {
-          console.error('Error al enviar QR a la interfaz:', error);
+          console.error('Error detallado al enviar QR a la interfaz:', error);
         }
       } else {
         console.error('La ventana principal no está disponible para enviar el QR');
       }
     });
     
-    // El resto de eventos también deberían verificar la existencia de la ventana
     whatsappClient.on('ready', () => {
       console.log('Cliente WhatsApp listo');
       isWhatsAppReady = true;
       initializationInProgress = false;
       
       // Guardar la sesión cuando esté lista
-      if (whatsappClient.session && sessionDataPath) {
+      if (whatsappClient && whatsappClient.session && sessionDataPath) {
         try {
-          fs.writeFileSync(sessionDataPath, JSON.stringify(whatsappClient.session), 'utf8');
+          const sessionJson = JSON.stringify(whatsappClient.session);
+          console.log(`Guardando sesión de WhatsApp (longitud: ${sessionJson.length} caracteres)`);
+          fs.writeFileSync(sessionDataPath, sessionJson, 'utf8');
           console.log('Sesión de WhatsApp guardada correctamente');
         } catch (error) {
-          console.error('Error al guardar sesión de WhatsApp:', error);
+          console.error('Error detallado al guardar sesión de WhatsApp:', error);
         }
       }
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        console.log('Notificando al frontend que WhatsApp está listo');
         mainWindowRef.webContents.send('whatsapp-ready');
         mainWindowRef.webContents.send('show-alert', {
           type: 'success',
@@ -138,7 +190,6 @@ function initializeWhatsAppClient() {
       }
     });
     
-    // Eventos de error
     whatsappClient.on('auth_failure', (error) => {
       console.error('Error de autenticación en WhatsApp:', error);
       isWhatsAppReady = false;
@@ -146,10 +197,16 @@ function initializeWhatsAppClient() {
       
       // Eliminar archivo de sesión si existe
       if (sessionDataPath && fs.existsSync(sessionDataPath)) {
-        fs.unlinkSync(sessionDataPath);
+        try {
+          fs.unlinkSync(sessionDataPath);
+          console.log('Archivo de sesión eliminado después de fallo de autenticación');
+        } catch (unlinkError) {
+          console.error('Error al eliminar archivo de sesión tras fallo:', unlinkError);
+        }
       }
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        console.log('Notificando al frontend sobre fallo de autenticación');
         mainWindowRef.webContents.send('whatsapp-auth-failure');
         mainWindowRef.webContents.send('show-alert', {
           type: 'error',
@@ -159,11 +216,12 @@ function initializeWhatsAppClient() {
     });
     
     whatsappClient.on('disconnected', (reason) => {
-      console.log('WhatsApp desconectado:', reason);
+      console.log('WhatsApp desconectado. Razón:', reason);
       isWhatsAppReady = false;
       initializationInProgress = false;
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        console.log('Notificando al frontend sobre desconexión');
         mainWindowRef.webContents.send('whatsapp-disconnected');
         mainWindowRef.webContents.send('show-alert', {
           type: 'warning',
@@ -172,16 +230,39 @@ function initializeWhatsAppClient() {
       }
     });
     
+    // Agregar más eventos para mejor depuración
+    whatsappClient.on('loading_screen', (percent, message) => {
+      console.log(`Cargando WhatsApp: ${percent}% - ${message}`);
+      
+      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        mainWindowRef.webContents.send('whatsapp-loading', { percent, message });
+      }
+    });
+    
+    whatsappClient.on('authenticated', () => {
+      console.log('WhatsApp autenticado correctamente');
+      
+      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+        mainWindowRef.webContents.send('whatsapp-authenticated');
+        mainWindowRef.webContents.send('show-alert', {
+          type: 'info',
+          message: 'WhatsApp autenticado correctamente. Cargando...'
+        });
+      }
+    });
+    
     // Inicializar el cliente
+    console.log('Llamando a whatsappClient.initialize()');
     whatsappClient.initialize()
       .then(() => {
         console.log('Cliente de WhatsApp inicializado correctamente');
       })
       .catch(error => {
-        console.error('Error al inicializar WhatsApp:', error);
+        console.error('Error detallado al inicializar WhatsApp:', error);
         initializationInProgress = false;
         
         if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+          mainWindowRef.webContents.send('whatsapp-initialization-failed', { error: error.message });
           mainWindowRef.webContents.send('show-alert', {
             type: 'error',
             message: `Error al inicializar WhatsApp: ${error.message}`
@@ -190,42 +271,54 @@ function initializeWhatsAppClient() {
       });
     
   } catch (error) {
-    console.error('Error al configurar WhatsApp:', error);
+    console.error('Error crítico al configurar WhatsApp:', error);
     initializationInProgress = false;
     
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+      mainWindowRef.webContents.send('whatsapp-initialization-failed', { error: error.message });
       mainWindowRef.webContents.send('show-alert', {
         type: 'error',
-        message: `Error al configurar WhatsApp: ${error.message}`
+        message: `Error crítico al configurar WhatsApp: ${error.message}`
       });
     }
   }
 }
 
 /**
- * Configura los manejadores IPC para WhatsApp
+ * Configurar los manejadores IPC para WhatsApp
  */
 function setupWhatsAppIpcHandlers() {
   // Verificar si WhatsApp está conectado
   ipcMain.handle('is-whatsapp-connected', () => {
+    console.log(`Verificando estado de WhatsApp. Está conectado: ${isWhatsAppReady}`);
     return isWhatsAppReady;
   });
   
   // Cerrar sesión de WhatsApp
   ipcMain.handle('logout-whatsapp', async () => {
+    console.log('Solicitud para cerrar sesión de WhatsApp');
+    
     try {
       if (!whatsappClient) {
+        console.log('No hay cliente WhatsApp activo para cerrar sesión');
         return {
           success: false,
           message: 'No hay sesión activa de WhatsApp'
         };
       }
       
+      console.log('Cerrando sesión de WhatsApp...');
       await whatsappClient.logout();
+      console.log('Sesión de WhatsApp cerrada correctamente');
       
       // Eliminar archivo de sesión si existe
       if (sessionDataPath && fs.existsSync(sessionDataPath)) {
-        fs.unlinkSync(sessionDataPath);
+        try {
+          fs.unlinkSync(sessionDataPath);
+          console.log('Archivo de sesión eliminado correctamente');
+        } catch (unlinkError) {
+          console.error('Error al eliminar archivo de sesión:', unlinkError);
+        }
       }
       
       isWhatsAppReady = false;
@@ -243,10 +336,122 @@ function setupWhatsAppIpcHandlers() {
         message: 'Sesión de WhatsApp cerrada correctamente'
       };
     } catch (error) {
-      console.error('Error al cerrar sesión de WhatsApp:', error);
+      console.error('Error detallado al cerrar sesión de WhatsApp:', error);
       return {
         success: false,
-        message: `Error al cerrar sesión: ${error.message}`
+        message: `Error al cerrar sesión: ${error.message || 'Error desconocido'}`
+      };
+    }
+  });
+  
+  // Inicializar WhatsApp explícitamente
+  ipcMain.handle('initialize-whatsapp', async () => {
+    console.log('Solicitud para inicializar WhatsApp explícitamente');
+    
+    try {
+      if (initializationInProgress) {
+        return {
+          success: false,
+          message: 'Ya hay una inicialización en progreso'
+        };
+      }
+      
+      if (isWhatsAppReady) {
+        return {
+          success: true,
+          message: 'WhatsApp ya está inicializado y conectado'
+        };
+      }
+      
+      // Iniciar el proceso de inicialización
+      initializeWhatsAppClient();
+      
+      return {
+        success: true,
+        message: 'Inicialización de WhatsApp iniciada'
+      };
+    } catch (error) {
+      console.error('Error al iniciar inicialización de WhatsApp:', error);
+      return {
+        success: false,
+        message: `Error al iniciar WhatsApp: ${error.message}`
+      };
+    }
+  });
+  
+  // Enviar mensaje WhatsApp
+  ipcMain.handle('send-whatsapp-message', async (event, messageData) => {
+    try {
+      // Si es una solicitud de conexión, iniciar el proceso de autenticación
+      if (messageData.action === 'connect') {
+        console.log('Solicitud para iniciar conexión de WhatsApp');
+        
+        // Inicializar cliente WhatsApp si no está ya inicializado
+        if (!whatsappClient || !initializationInProgress) {
+          initializeWhatsAppClient();
+        }
+        
+        return { 
+          success: true, 
+          message: 'Iniciando conexión con WhatsApp' 
+        };
+      }
+      
+      // Para enviar un mensaje, verificar que tenemos los datos necesarios
+      if (!messageData.phone || !messageData.message) {
+        return {
+          success: false,
+          message: 'Número de teléfono y mensaje son obligatorios'
+        };
+      }
+      
+      // Si es un mensaje normal, enviarlo
+      const result = await sendWhatsAppMessage(messageData.phone, messageData.message);
+      return result;
+    } catch (error) {
+      console.error('Error al procesar solicitud de WhatsApp:', error);
+      return { 
+        success: false, 
+        message: `Error en WhatsApp: ${error.message}` 
+      };
+    }
+  });
+  
+  // Obtener los chats de WhatsApp
+  ipcMain.handle('get-whatsapp-chats', async () => {
+    console.log('Solicitud para obtener chats de WhatsApp');
+    
+    if (!isWhatsAppReady || !whatsappClient) {
+      console.log('WhatsApp no está conectado para obtener chats');
+      return {
+        success: false,
+        message: 'WhatsApp no está conectado'
+      };
+    }
+    
+    try {
+      console.log('Obteniendo chats...');
+      const chats = await whatsappClient.getChats();
+      console.log(`Se encontraron ${chats.length} chats`);
+      
+      // Formatear los chats para enviar solo datos necesarios
+      const formattedChats = chats.map(chat => ({
+        id: chat.id._serialized,
+        name: chat.name,
+        isGroup: chat.isGroup,
+        timestamp: chat.timestamp,
+        unreadCount: chat.unreadCount
+      }));
+      
+      return {
+        success: true,
+        chats: formattedChats
+      };
+    } catch (error) {
+      console.error('Error al obtener chats de WhatsApp:', error);
+      return {
+        success: false,
+        message: `Error al obtener chats: ${error.message}`
       };
     }
   });
@@ -259,7 +464,10 @@ function setupWhatsAppIpcHandlers() {
  * @returns {Promise<Object>} - Resultado del envío
  */
 async function sendWhatsAppMessage(to, message) {
+  console.log(`Solicitud para enviar mensaje a: ${to}`);
+  
   if (!isWhatsAppReady || !whatsappClient) {
+    console.log('WhatsApp no está listo para enviar mensajes');
     return {
       success: false,
       message: 'WhatsApp no está conectado. Por favor inicia sesión primero.'
@@ -272,33 +480,44 @@ async function sendWhatsAppMessage(to, message) {
     
     // Eliminar cualquier carácter que no sea número
     formattedNumber = formattedNumber.replace(/\D/g, '');
+    console.log(`Número después de quitar caracteres no numéricos: ${formattedNumber}`);
     
     // Verificar que tenga código de país
-    if (!formattedNumber.startsWith('+')) {
+    if (!to.startsWith('+')) {
       if (formattedNumber.startsWith('0')) {
         formattedNumber = formattedNumber.substring(1);
+        console.log(`Número después de quitar cero inicial: ${formattedNumber}`);
       }
       
-      // Asumir código de país (ej: +56 para Chile)
+      // Asumir código de país para Chile si no está
       if (!formattedNumber.startsWith('56')) {
         formattedNumber = '56' + formattedNumber;
+        console.log(`Número después de agregar código de país: ${formattedNumber}`);
       }
     }
     
-    // Enviar mensaje
+    // Formato final para WhatsApp API
     const chatId = `${formattedNumber}@c.us`;
+    console.log(`ID de chat formateado: ${chatId}`);
+    
+    console.log('Enviando mensaje...');
     const response = await whatsappClient.sendMessage(chatId, message);
+    console.log('Mensaje enviado exitosamente');
     
     return {
       success: true,
       message: 'Mensaje enviado con éxito',
-      data: response
+      data: {
+        id: response.id ? response.id.id : null,
+        timestamp: response.timestamp || new Date().getTime(),
+        to: to
+      }
     };
   } catch (error) {
-    console.error('Error al enviar mensaje WhatsApp:', error);
+    console.error('Error detallado al enviar mensaje WhatsApp:', error);
     return {
       success: false,
-      message: `Error al enviar mensaje: ${error.message}`
+      message: `Error al enviar mensaje: ${error.message || 'Error desconocido'}`
     };
   }
 }

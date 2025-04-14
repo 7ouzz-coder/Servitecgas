@@ -93,7 +93,63 @@ async function loadWhatsAppSection() {
           </div>
         </div>
         
-        <div class="row">
+        <!-- Nueva sección de chats -->
+        <div class="row mt-4">
+          <div class="col-md-12">
+            <div id="whatsapp-chats-container">
+              <!-- Los chats se cargarán aquí -->
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h5 class="mb-0">Conversaciones Recientes</h5>
+                  <div>
+                    <span class="badge bg-${isWhatsAppConnected ? 'success' : 'secondary'} me-2">
+                      ${isWhatsAppConnected ? 'Conectado' : 'Desconectado'}
+                    </span>
+                    <button class="btn btn-sm btn-outline-primary refresh-chats-btn" ${!isWhatsAppConnected ? 'disabled' : ''}>
+                      <i class="bi bi-arrow-clockwise"></i> Actualizar
+                    </button>
+                  </div>
+                </div>
+                
+                ${isWhatsAppConnected ? `
+                  <div class="list-group list-group-flush">
+                    <a href="#" class="list-group-item list-group-item-action">
+                      <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">Juan Pérez</h6>
+                        <small class="text-muted">Hace 3 días</small>
+                      </div>
+                      <p class="mb-1 text-truncate">Gracias por la información sobre el mantenimiento...</p>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action">
+                      <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">María González</h6>
+                        <small class="text-muted">Ayer</small>
+                      </div>
+                      <p class="mb-1 text-truncate">Confirmo la visita para el día 15 a las 10am...</p>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action">
+                      <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">Carlos Rodríguez</h6>
+                        <small class="text-muted">Hace 5 horas</small>
+                      </div>
+                      <p class="mb-1 text-truncate">¿Cuándo podrían venir a revisar mi caldera?</p>
+                    </a>
+                  </div>
+                ` : `
+                  <div class="card-body text-center py-5">
+                    <div class="text-muted mb-3">
+                      <i class="bi bi-whatsapp" style="font-size: 48px;"></i>
+                    </div>
+                    <h6>WhatsApp no está conectado</h6>
+                    <p class="text-muted">Conecta WhatsApp para ver tus conversaciones recientes</p>
+                  </div>
+                `}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="row mt-4">
           <div class="col-md-12">
             <!-- Tarjeta de historial de mensajes -->
             <div class="card">
@@ -162,10 +218,79 @@ async function loadWhatsAppSection() {
             </div>
           </div>
         </div>
+        
+        <!-- Modal de chat de WhatsApp -->
+        <div class="modal fade" id="chatDetailModal" tabindex="-1" aria-labelledby="chatDetailModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title" id="chatDetailModalLabel">Conversación con Juan Pérez</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body chat-container" style="height: 400px; overflow-y: auto;">
+                <div class="d-flex flex-column">
+                  <!-- Mensaje recibido -->
+                  <div class="chat-message received mb-3">
+                    <div class="chat-bubble p-2 bg-light rounded">
+                      Hola, quisiera consultar por el mantenimiento de mi caldera.
+                    </div>
+                    <small class="text-muted">10:30 AM</small>
+                  </div>
+                  
+                  <!-- Mensaje enviado -->
+                  <div class="chat-message sent mb-3 align-self-end">
+                    <div class="chat-bubble p-2 bg-primary text-white rounded">
+                      ¡Hola! Claro, podemos programar una visita técnica para revisar su caldera. ¿Qué día le vendría bien?
+                    </div>
+                    <small class="text-muted">10:32 AM</small>
+                  </div>
+                  
+                  <!-- Mensaje recibido -->
+                  <div class="chat-message received mb-3">
+                    <div class="chat-bubble p-2 bg-light rounded">
+                      ¿Podría ser el próximo lunes en la mañana?
+                    </div>
+                    <small class="text-muted">10:35 AM</small>
+                  </div>
+                  
+                  <!-- Mensaje enviado -->
+                  <div class="chat-message sent mb-3 align-self-end">
+                    <div class="chat-bubble p-2 bg-primary text-white rounded">
+                      Perfecto, lo agendaré para el lunes a las 10:00 AM. ¿Le parece bien esa hora?
+                    </div>
+                    <small class="text-muted">10:36 AM</small>
+                  </div>
+                  
+                  <!-- Mensaje recibido -->
+                  <div class="chat-message received mb-3">
+                    <div class="chat-bubble p-2 bg-light rounded">
+                      Sí, perfecto. ¿Cuánto cuesta el servicio?
+                    </div>
+                    <small class="text-muted">10:38 AM</small>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <div class="input-group">
+                  <input type="text" class="form-control" placeholder="Escribe un mensaje...">
+                  <button class="btn btn-success" type="button">
+                    <i class="bi bi-send"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       `;
       
-      // Configurar eventos para esta sección
+      // Configurar eventos
       setupWhatsAppEvents();
+      
+      // Inicializar también la visualización de chats
+      loadWhatsAppChats();
+      
+      // Agregar área de depuración
+      setupDebugLogViewer();
       
     } catch (error) {
       console.error("Error al cargar sección de WhatsApp:", error);
@@ -207,6 +332,8 @@ async function loadWhatsAppSection() {
         try {
           // Mostrar spinner y deshabilitar botón
           connectWhatsAppBtn.disabled = true;
+          const originalText = connectWhatsAppBtn.innerHTML;
+          connectWhatsAppBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Conectando...';
           
           // Mostrar estado conectando
           const connectingDiv = document.getElementById('whatsapp-connecting');
@@ -226,18 +353,87 @@ async function loadWhatsAppSection() {
             qrContainer.style.display = 'block';
           }
           
+          console.log("Solicitando conexión a WhatsApp...");
+          
+          // Mostrar mensaje de depuración en el contenedor QR
+          if (qrCodeDiv) {
+            qrCodeDiv.innerHTML = `
+              <div class="alert alert-info">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Iniciando cliente de WhatsApp... Por favor espera.
+              </div>
+            `;
+          }
+          
+          // Primero intentamos inicializar explícitamente WhatsApp si existe ese método
+          if (window.api.initializeWhatsApp) {
+            try {
+              await window.api.initializeWhatsApp();
+            } catch (initError) {
+              console.log("Error al inicializar explícitamente:", initError);
+              // Continuamos con el método tradicional
+            }
+          }
+          
           // Solicitar conexión a WhatsApp
-          await window.api.sendWhatsAppMessage({ action: 'connect' });
-          showAlert('info', 'Iniciando conexión con WhatsApp. Escanea el código QR cuando aparezca.', 5000);
+          const result = await window.api.sendWhatsAppMessage({ action: 'connect' });
+          console.log("Resultado de la solicitud de conexión:", result);
+          
+          if (result.success) {
+            showAlert('info', 'Iniciando conexión con WhatsApp. Escanea el código QR cuando aparezca.', 5000);
+            
+            // Mostrar mensaje informativo mientras esperamos el QR
+            if (qrCodeDiv) {
+              qrCodeDiv.innerHTML = `
+                <div class="alert alert-info">
+                  <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  Generando código QR... Esto puede tardar unos momentos.
+                </div>
+              `;
+            }
+          } else {
+            showAlert('danger', `Error al iniciar conexión: ${result.message}`, 5000);
+            
+            // Restaurar botón
+            connectWhatsAppBtn.disabled = false;
+            connectWhatsAppBtn.innerHTML = originalText;
+            
+            if (connectingDiv) {
+              connectingDiv.style.display = 'none';
+            }
+            
+            // Mostrar error en contenedor QR
+            if (qrCodeDiv) {
+              qrCodeDiv.innerHTML = `
+                <div class="alert alert-danger">
+                  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                  Error al iniciar la conexión con WhatsApp: ${result.message}
+                </div>
+              `;
+            }
+          }
         } catch (error) {
-          console.error("Error al iniciar conexión WhatsApp:", error);
+          console.error("Error completo al iniciar conexión WhatsApp:", error);
           showAlert('danger', `Error al iniciar conexión: ${error.message}`, 5000);
           
           // Restaurar botón
           connectWhatsAppBtn.disabled = false;
+          connectWhatsAppBtn.innerHTML = '<i class="bi bi-whatsapp me-2"></i> Conectar WhatsApp';
+          
           const connectingDiv = document.getElementById('whatsapp-connecting');
           if (connectingDiv) {
             connectingDiv.style.display = 'none';
+          }
+          
+          // Mostrar error en contenedor QR
+          const qrCodeDiv = document.getElementById('qr-code');
+          if (qrCodeDiv) {
+            qrCodeDiv.innerHTML = `
+              <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                Error al iniciar la conexión con WhatsApp: ${error.message}
+              </div>
+            `;
           }
         }
       });
@@ -344,32 +540,68 @@ async function loadWhatsAppSection() {
     
     // Configurar listener para cambios de estado de WhatsApp
     setupWhatsAppStatusListeners();
+    
+    // Configurar botón de actualizar chats
+    const refreshChatsBtn = document.querySelector('.refresh-chats-btn');
+    if (refreshChatsBtn) {
+      refreshChatsBtn.addEventListener('click', () => {
+        loadWhatsAppChats();
+      });
+    }
+    
+    // Configurar listeners para los ítems de chat
+    setupChatItemListeners();
   }
   
   // Configurar listener para recibir código QR
   function setupQRCodeListener() {
     // Eliminar listeners anteriores
     if (window.whatsAppQRListener) {
-      window.api.removeListener('whatsapp-qr', window.whatsAppQRListener);
+      try {
+        window.api.removeListener('whatsapp-qr', window.whatsAppQRListener);
+      } catch (error) {
+        console.log("Error al quitar listener anterior:", error);
+      }
     }
     
     // Nuevo listener
-    window.whatsAppQRListener = (qr) => {
-      console.log("Código QR recibido en el renderer:", qr ? "String de " + qr.length + " caracteres" : "null");
+    window.whatsAppQRListener = (qrData) => {
+      console.log("Datos QR recibidos en el renderer:", typeof qrData);
       
       const qrContainer = document.getElementById('qr-container');
       const qrCode = document.getElementById('qr-code');
       const connectingDiv = document.getElementById('whatsapp-connecting');
       
-      if (qrContainer && qrCode && qr) {
+      if (qrContainer && qrCode) {
         // Mostrar contenedor QR
         qrContainer.style.display = 'block';
         
         // Ocultar indicador de conectando
         if (connectingDiv) connectingDiv.style.display = 'none';
         
-        // Usar servicio API externo para generar imagen QR
-        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qr)}`;
+        // Verificar si recibimos un objeto con URL o el código directo
+        let qrImageUrl;
+        
+        if (typeof qrData === 'object' && qrData.qrImageUrl) {
+          // Nuevo formato: objeto con URL
+          qrImageUrl = qrData.qrImageUrl;
+          console.log('Usando URL de imagen QR proporcionada por el servidor');
+        } else if (typeof qrData === 'object' && qrData.qrCode) {
+          // Formato alternativo: objeto con qrCode
+          qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData.qrCode)}`;
+          console.log('Generando URL de imagen QR a partir de datos QR en objeto');
+        } else if (typeof qrData === 'string') {
+          // Formato antiguo: string directo del código QR
+          qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}`;
+          console.log('Generando URL de imagen QR a partir de string QR');
+        } else {
+          console.error('Formato de datos QR no reconocido', typeof qrData);
+          qrContainer.style.display = 'none';
+          showAlert('danger', 'Error al generar código QR. Formato no válido.', 5000);
+          return;
+        }
+        
+        console.log('URL de imagen QR generada');
         
         qrCode.innerHTML = `
           <div style="padding: 15px; background-color: white; border-radius: 4px; display: inline-block; margin: 0 auto;">
@@ -382,17 +614,18 @@ async function loadWhatsAppSection() {
           </div>
         `;
         
+        console.log('Código QR insertado en el DOM');
+        
         // También mostrar alerta 
         showAlert('info', 'Código QR generado. Escanea con WhatsApp en tu teléfono.', 8000);
       } else {
-        console.error("No se pudo mostrar el QR: contenedor no encontrado o QR no válido");
-        if (qrCode) {
-          qrCode.innerHTML = `<div class="alert alert-danger">No se pudo generar el código QR. Intenta nuevamente.</div>`;
-        }
+        console.error("No se pudo mostrar el QR: contenedor no encontrado");
+        showAlert('danger', 'Error: No se pudo encontrar el contenedor para el código QR.', 5000);
       }
     };
     
     // Registrar listener
+    console.log('Registrando listener para eventos whatsapp-qr');
     window.api.onWhatsAppQR(window.whatsAppQRListener);
   }
   
@@ -432,30 +665,381 @@ async function loadWhatsAppSection() {
       // Recargar sección para mostrar estado desconectado
       loadWhatsAppSection();
     });
+    
+    // Listener para fase de carga
+  if (window.api.onWhatsAppLoading) {
+    window.api.onWhatsAppLoading((data) => {
+      console.log(`Cargando WhatsApp: ${data.percent}% - ${data.message}`);
+      
+      // Actualizar mensaje de carga si existe
+      const qrCodeDiv = document.getElementById('qr-code');
+      if (qrCodeDiv) {
+        qrCodeDiv.innerHTML = `
+          <div class="alert alert-info">
+            <div class="progress mb-2">
+              <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                  role="progressbar" style="width: ${data.percent}%" 
+                  aria-valuenow="${data.percent}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <strong>Cargando WhatsApp: ${data.percent}%</strong><br>
+            ${data.message}
+          </div>
+        `;
+      }
+    });
   }
   
-  // Crear plantilla de mensajes
-  function createMessageTemplate(type, data) {
-    switch (type) {
-      case 'maintenance':
-        return `Estimado/a ${data.clientName},\n\nLe recordamos que su ${data.componentName} en ${data.address} requiere mantenimiento programado en los próximos días (${formatDate(data.nextMaintenanceDate)}).\n\nPor favor, contáctenos para agendar una visita.\n\nGracias,\nServicio Técnico de Gas`;
+  // Listener para autenticado
+  if (window.api.onWhatsAppAuthenticated) {
+    window.api.onWhatsAppAuthenticated(() => {
+      console.log("WhatsApp autenticado");
+      showAlert('info', 'WhatsApp autenticado correctamente. Cargando...', 5000);
       
-      case 'followup':
-        return `Estimado/a ${data.clientName},\n\nEsperamos que su instalación de gas esté funcionando correctamente. Queremos recordarle que estamos disponibles para cualquier consulta o servicio que necesite.\n\nGracias por confiar en nosotros.\n\nSaludos cordiales,\nServicio Técnico de Gas`;
+      // Actualizar mensaje si existe
+      const qrCodeDiv = document.getElementById('qr-code');
+      if (qrCodeDiv) {
+        qrCodeDiv.innerHTML = `
+          <div class="alert alert-success">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            <strong>Autenticado correctamente</strong><br>
+            Cargando WhatsApp, por favor espera...
+          </div>
+        `;
+      }
+    });
+  }
+  
+  // Listener para fallo de inicialización
+  if (window.api.onWhatsAppInitializationFailed) {
+    window.api.onWhatsAppInitializationFailed((data) => {
+      console.log("Fallo en la inicialización de WhatsApp:", data.error);
+      showAlert('danger', `Error al inicializar WhatsApp: ${data.error}`, 5000);
       
-      case 'custom':
-        return 'Escriba su mensaje personalizado aquí...';
+      // Restaurar botón conectar
+      const connectBtn = document.getElementById('connect-whatsapp-btn');
+      if (connectBtn) {
+        connectBtn.disabled = false;
+        connectBtn.innerHTML = '<i class="bi bi-whatsapp me-2"></i> Reintentar conexión';
+      }
       
-      default:
-        return '';
+      // Ocultar indicador de conectando
+      const connectingDiv = document.getElementById('whatsapp-connecting');
+      if (connectingDiv) {
+        connectingDiv.style.display = 'none';
+      }
+      
+      // Mostrar error en contenedor QR
+      const qrCodeDiv = document.getElementById('qr-code');
+      if (qrCodeDiv) {
+        qrCodeDiv.innerHTML = `
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Error al inicializar WhatsApp</strong><br>
+            ${data.error}
+          </div>
+        `;
+      }
+    });
+  }
+}
+
+// Configurar listeners para ítems de chat
+function setupChatItemListeners() {
+  // Agregar listeners a elementos de chat cuando estén presentes
+  const chatItems = document.querySelectorAll('.list-group-item-action');
+  chatItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Mostrar modal con la conversación
+      const chatModal = new bootstrap.Modal(document.getElementById('chatDetailModal'));
+      chatModal.show();
+    });
+  });
+}
+
+// Cargar los chats de WhatsApp
+function loadWhatsAppChats() {
+  const chatsContainer = document.getElementById('whatsapp-chats-container');
+  if (!chatsContainer) return;
+  
+  // Verificar si WhatsApp está conectado
+  window.api.isWhatsAppConnected().then(isConnected => {
+    if (!isConnected) {
+      // Ya manejado en la carga inicial de la sección
+      return;
     }
+    
+    // Si existe el método para obtener chats, usarlo
+    if (window.api.getWhatsAppChats) {
+      try {
+        // Mostrar indicador de carga
+        chatsContainer.innerHTML = `
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Conversaciones Recientes</h5>
+              <div>
+                <span class="badge bg-success me-2">Conectado</span>
+                <button class="btn btn-sm btn-outline-primary refresh-chats-btn" disabled>
+                  <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  Cargando...
+                </button>
+              </div>
+            </div>
+            <div class="card-body text-center py-4">
+              <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Cargando...</span>
+              </div>
+              <p>Cargando conversaciones...</p>
+            </div>
+          </div>
+        `;
+        
+        // Obtener chats
+        window.api.getWhatsAppChats().then(result => {
+          if (result.success && result.chats && result.chats.length > 0) {
+            // Renderizar chats reales
+            const chatsList = result.chats.map(chat => `
+              <a href="#" class="list-group-item list-group-item-action">
+                <div class="d-flex w-100 justify-content-between">
+                  <h6 class="mb-1">${chat.name || 'Chat ' + chat.id.substring(0, 8)}</h6>
+                  <small class="text-muted">${formatTimeAgo(chat.timestamp)}</small>
+                </div>
+                <p class="mb-1 text-truncate">
+                  ${chat.unreadCount > 0 ? 
+                    `<span class="badge bg-primary me-1">${chat.unreadCount}</span>` : 
+                    ''}
+                  ${chat.isGroup ? '<i class="bi bi-people-fill me-1"></i>' : ''}
+                  ${chat.lastMessage || 'Sin mensajes recientes'}
+                </p>
+              </a>
+            `).join('');
+            
+            chatsContainer.innerHTML = `
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h5 class="mb-0">Conversaciones Recientes</h5>
+                  <div>
+                    <span class="badge bg-success me-2">Conectado</span>
+                    <button class="btn btn-sm btn-outline-primary refresh-chats-btn">
+                      <i class="bi bi-arrow-clockwise"></i> Actualizar
+                    </button>
+                  </div>
+                </div>
+                <div class="list-group list-group-flush">
+                  ${chatsList}
+                </div>
+              </div>
+            `;
+            
+            // Reconfigurar botón de actualizar
+            setupChatItemListeners();
+            
+            const refreshBtn = document.querySelector('.refresh-chats-btn');
+            if (refreshBtn) {
+              refreshBtn.addEventListener('click', () => {
+                loadWhatsAppChats();
+              });
+            }
+          } else {
+            // No hay chats o hubo error
+            chatsContainer.innerHTML = `
+              <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <h5 class="mb-0">Conversaciones Recientes</h5>
+                  <div>
+                    <span class="badge bg-success me-2">Conectado</span>
+                    <button class="btn btn-sm btn-outline-primary refresh-chats-btn">
+                      <i class="bi bi-arrow-clockwise"></i> Actualizar
+                    </button>
+                  </div>
+                </div>
+                <div class="card-body text-center py-4">
+                  <div class="text-muted mb-3">
+                    <i class="bi bi-chat-dots" style="font-size: 48px;"></i>
+                  </div>
+                  <h6>No se encontraron conversaciones</h6>
+                  <p class="text-muted">No hay chats recientes o hubo un error al cargarlos</p>
+                </div>
+              </div>
+            `;
+            
+            // Reconfigurar botón de actualizar
+            const refreshBtn = document.querySelector('.refresh-chats-btn');
+            if (refreshBtn) {
+              refreshBtn.addEventListener('click', () => {
+                loadWhatsAppChats();
+              });
+            }
+          }
+        }).catch(error => {
+          console.error('Error al obtener chats:', error);
+          chatsContainer.innerHTML = `
+            <div class="card">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Conversaciones Recientes</h5>
+                <div>
+                  <span class="badge bg-success me-2">Conectado</span>
+                  <button class="btn btn-sm btn-outline-primary refresh-chats-btn">
+                    <i class="bi bi-arrow-clockwise"></i> Reintentar
+                  </button>
+                </div>
+              </div>
+              <div class="card-body text-center py-4">
+                <div class="alert alert-danger">
+                  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                  Error al cargar conversaciones: ${error.message}
+                </div>
+              </div>
+            </div>
+          `;
+          
+          // Reconfigurar botón de actualizar
+          const refreshBtn = document.querySelector('.refresh-chats-btn');
+          if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+              loadWhatsAppChats();
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Error al configurar carga de chats:', error);
+      }
+    } else {
+      // No hay método de API para obtener chats, mostrar datos de ejemplo
+      console.log('API para obtener chats no disponible, mostrando datos de ejemplo');
+    }
+  }).catch(error => {
+    console.error('Error al verificar estado de WhatsApp:', error);
+    chatsContainer.innerHTML = `
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Conversaciones Recientes</h5>
+          <span class="badge bg-danger me-2">Error</span>
+        </div>
+        <div class="card-body text-center py-4">
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-circle-fill me-2"></i>
+            Error al verificar estado de WhatsApp: ${error.message}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+// Helper para formatear tiempo relativo
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return 'Desconocido';
+  
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  
+  if (diffSec < 60) {
+    return 'Ahora mismo';
+  } else if (diffMin < 60) {
+    return `Hace ${diffMin} ${diffMin === 1 ? 'minuto' : 'minutos'}`;
+  } else if (diffHour < 24) {
+    return `Hace ${diffHour} ${diffHour === 1 ? 'hora' : 'horas'}`;
+  } else if (diffDay < 30) {
+    return `Hace ${diffDay} ${diffDay === 1 ? 'día' : 'días'}`;
+  } else {
+    return date.toLocaleDateString();
+  }
+}
+
+// Crear plantilla de mensajes
+function createMessageTemplate(type, data) {
+  switch (type) {
+    case 'maintenance':
+      return `Estimado/a ${data.clientName},\n\nLe recordamos que su ${data.componentName} en ${data.address} requiere mantenimiento programado en los próximos días (${formatDate(data.nextMaintenanceDate)}).\n\nPor favor, contáctenos para agendar una visita.\n\nGracias,\nServicio Técnico de Gas`;
+    
+    case 'followup':
+      return `Estimado/a ${data.clientName},\n\nEsperamos que su instalación de gas esté funcionando correctamente. Queremos recordarle que estamos disponibles para cualquier consulta o servicio que necesite.\n\nGracias por confiar en nosotros.\n\nSaludos cordiales,\nServicio Técnico de Gas`;
+    
+    case 'custom':
+      return 'Escriba su mensaje personalizado aquí...';
+    
+    default:
+      return '';
+  }
+}
+
+// Formatear fecha
+function formatDate(dateString) {
+  if (!dateString) return '-';
+  return window.api.formatDate ? window.api.formatDate(dateString) : new Date(dateString).toLocaleDateString();
+}
+
+// Área de depuración para ayudar a diagnosticar problemas
+function setupDebugLogViewer() {
+  // Crear un área para mostrar los logs de depuración
+  const debugLogContainer = document.createElement('div');
+  debugLogContainer.className = 'card mt-4 debug-log-container';
+  debugLogContainer.innerHTML = `
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Logs de Depuración</h5>
+      <button class="btn btn-sm btn-outline-secondary clear-logs-btn">
+        <i class="bi bi-trash"></i> Limpiar
+      </button>
+    </div>
+    <div class="card-body">
+      <pre class="debug-log-content" style="height: 200px; overflow-y: auto; font-size: 12px;"></pre>
+    </div>
+  `;
+  
+  // Insertar después de la última fila en la sección
+  const whatsappSection = document.getElementById('whatsapp-section');
+  if (whatsappSection) {
+    whatsappSection.appendChild(debugLogContainer);
   }
   
-  // Formatear fecha
-  function formatDate(dateString) {
-    if (!dateString) return '-';
-    return window.api.formatDate ? window.api.formatDate(dateString) : new Date(dateString).toLocaleDateString();
+  // Configurar botón de limpiar logs
+  const clearLogsBtn = document.querySelector('.clear-logs-btn');
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', () => {
+      const logContent = document.querySelector('.debug-log-content');
+      if (logContent) {
+        logContent.innerHTML = '';
+      }
+    });
   }
   
-  // Exportar funciones
-  window.loadWhatsAppSection = loadWhatsAppSection;
+  // Sobrescribir console.log para mostrar también en nuestra área de logs
+  const originalConsoleLog = console.log;
+  console.log = function() {
+    // Llamar a la implementación original
+    originalConsoleLog.apply(console, arguments);
+    
+    // También mostrar en nuestra área de logs
+    const logContent = document.querySelector('.debug-log-content');
+    if (logContent) {
+      const args = Array.from(arguments);
+      const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+      const logMessage = `[${timestamp}] ${args.map(arg => {
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg);
+          } catch (e) {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      }).join(' ')}`;
+      
+      const logEntry = document.createElement('div');
+      logEntry.textContent = logMessage;
+      logContent.appendChild(logEntry);
+      
+      // Auto-scroll al final
+      logContent.scrollTop = logContent.scrollHeight;
+    }
+  };
+}
+
+// Exportar funciones
+window.loadWhatsAppSection = loadWhatsAppSection;

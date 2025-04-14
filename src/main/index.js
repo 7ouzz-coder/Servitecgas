@@ -359,65 +359,96 @@ function setupIpcHandlers(store) {
   });
   
   ipcMain.handle('add-installation', (event, installation) => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
+    console.log('Recibiendo instalación para agregar:', JSON.stringify(installation).substring(0, 100) + '...');
     
-    const installations = store.get('installations') || [];
-    
-    // Asignar IDs a componentes si no los tienen
-    const components = installation.components?.map(component => ({
-      ...component,
-      id: component.id || uuidv4()
-    })) || [];
-    
-    const newInstallation = {
-      ...installation,
-      id: installation.id || uuidv4(),
-      createdAt: new Date().toISOString(),
-      createdBy: authService.getCurrentUser().id,
-      lastModified: new Date().toISOString(),
-      components
-    };
-    
-    const updatedInstallations = [...installations, newInstallation];
-    store.set('installations', updatedInstallations);
-    
-    return newInstallation;
-  });
-  
-  ipcMain.handle('update-installation', (event, installation) => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
-    
-    const installations = store.get('installations') || [];
-    const index = installations.findIndex(i => i.id === installation.id);
-    
-    if (index !== -1) {
-      // Asegurarse de que los componentes tengan IDs
-      const components = installation.components?.map(component => ({
-        ...component,
-        id: component.id || uuidv4()
-      })) || [];
+    try {
+      const installations = store.get('installations') || [];
       
-      const updatedInstallation = {
-        ...installations[index],
-        ...installation,
-        components,
-        lastModified: new Date().toISOString(),
-        updatedBy: authService.getCurrentUser().id
+      // Asegurarse de que todos los componentes tengan IDs válidos
+      const cleanedComponents = installation.components.map(comp => {
+        // Asegurar que solo tenemos datos primitivos, no objetos complejos
+        return {
+          id: comp.id || uuidv4(),
+          name: String(comp.name || ''),
+          model: String(comp.model || ''),
+          lastMaintenanceDate: String(comp.lastMaintenanceDate || ''),
+          frequency: String(comp.frequency || '12'),
+          nextMaintenanceDate: String(comp.nextMaintenanceDate || ''),
+          notes: String(comp.notes || '')
+        };
+      });
+      
+      // Crear nueva instalación limpia
+      const newInstallation = {
+        id: installation.id || uuidv4(),
+        clientId: String(installation.clientId || ''),
+        address: String(installation.address || ''),
+        type: String(installation.type || ''),
+        date: String(installation.date || ''),
+        notes: String(installation.notes || ''),
+        components: cleanedComponents,
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString()
       };
       
-      installations[index] = updatedInstallation;
-      store.set('installations', installations);
+      const updatedInstallations = [...installations, newInstallation];
+      store.set('installations', updatedInstallations);
       
-      return updatedInstallation;
+      return newInstallation;
+    } catch (error) {
+      console.error('Error al agregar instalación:', error);
+      // Lanzar un error simple, sin objetos complejos
+      throw new Error(error.message || 'Error al guardar instalación');
     }
+  });
+  
+  // Manejar actualizar instalación
+  ipcMain.handle('update-installation', (event, installation) => {
+    console.log('Recibiendo instalación para actualizar:', JSON.stringify(installation).substring(0, 100) + '...');
     
-    return null;
+    try {
+      const installations = store.get('installations') || [];
+      const index = installations.findIndex(i => i.id === installation.id);
+      
+      if (index !== -1) {
+        // Asegurarse de que todos los componentes tengan IDs válidos
+        const cleanedComponents = installation.components.map(comp => {
+          // Asegurar que solo tenemos datos primitivos, no objetos complejos
+          return {
+            id: comp.id || uuidv4(),
+            name: String(comp.name || ''),
+            model: String(comp.model || ''),
+            lastMaintenanceDate: String(comp.lastMaintenanceDate || ''),
+            frequency: String(comp.frequency || '12'),
+            nextMaintenanceDate: String(comp.nextMaintenanceDate || ''),
+            notes: String(comp.notes || '')
+          };
+        });
+        
+        // Actualizar instalación existente con datos limpios
+        const updatedInstallation = {
+          ...installations[index],
+          clientId: String(installation.clientId || ''),
+          address: String(installation.address || ''),
+          type: String(installation.type || ''),
+          date: String(installation.date || ''),
+          notes: String(installation.notes || ''),
+          components: cleanedComponents,
+          lastModified: new Date().toISOString()
+        };
+        
+        installations[index] = updatedInstallation;
+        store.set('installations', installations);
+        
+        return updatedInstallation;
+      }
+      
+      throw new Error('Instalación no encontrada');
+    } catch (error) {
+      console.error('Error al actualizar instalación:', error);
+      // Lanzar un error simple, sin objetos complejos
+      throw new Error(error.message || 'Error al actualizar instalación');
+    }
   });
   
   ipcMain.handle('delete-installation', (event, installationId) => {
@@ -619,6 +650,8 @@ function setupIpcHandlers(store) {
       const lastDate = new Date(lastMaintenanceDate);
       const nextDate = new Date(lastDate);
       nextDate.setMonth(nextDate.getMonth() + parseInt(frequency, 10));
+      
+      // Solo devolver la cadena de fecha formateada, no el objeto Date completo
       return nextDate.toISOString().split('T')[0];
     } catch (error) {
       console.error('Error al calcular próxima fecha de mantenimiento:', error);

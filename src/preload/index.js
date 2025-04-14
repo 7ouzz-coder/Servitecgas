@@ -53,6 +53,23 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('whatsapp-disconnected', () => callback());
   },
   
+  // Eventos adicionales para WhatsApp
+  onWhatsAppLoading: (callback) => {
+    ipcRenderer.on('whatsapp-loading', (event, data) => callback(data));
+  },
+  
+  onWhatsAppAuthenticated: (callback) => {
+    ipcRenderer.on('whatsapp-authenticated', () => callback());
+  },
+  
+  onWhatsAppInitializationStarted: (callback) => {
+    ipcRenderer.on('whatsapp-initialization-started', () => callback());
+  },
+  
+  onWhatsAppInitializationFailed: (callback) => {
+    ipcRenderer.on('whatsapp-initialization-failed', (event, data) => callback(data));
+  },
+  
   // Eliminar listeners (para limpieza)
   removeListener: (channel, listener) => {
     ipcRenderer.removeListener(channel, listener);
@@ -89,8 +106,31 @@ contextBridge.exposeInMainWorld('api', {
   // ============================================================
   
   getInstallations: () => ipcRenderer.invoke('get-installations'),
-  addInstallation: (installation) => ipcRenderer.invoke('add-installation', installation),
-  updateInstallation: (installation) => ipcRenderer.invoke('update-installation', installation),
+  
+  // Función mejorada para añadir instalación con manejo seguro de errores
+  addInstallation: async (installation) => {
+    try {
+      // Asegúrate de que la instalación sea serializable
+      const safeInstallation = JSON.parse(JSON.stringify(installation));
+      return await ipcRenderer.invoke('add-installation', safeInstallation);
+    } catch (error) {
+      console.error('Error en addInstallation:', error);
+      throw new Error(`Error al guardar instalación: ${error.message || 'Error desconocido'}`);
+    }
+  },
+  
+  // Función mejorada para actualizar instalación
+  updateInstallation: async (installation) => {
+    try {
+      // Asegúrate de que la instalación sea serializable
+      const safeInstallation = JSON.parse(JSON.stringify(installation));
+      return await ipcRenderer.invoke('update-installation', safeInstallation);
+    } catch (error) {
+      console.error('Error en updateInstallation:', error);
+      throw new Error(`Error al actualizar instalación: ${error.message || 'Error desconocido'}`);
+    }
+  },
+  
   deleteInstallation: (installationId) => ipcRenderer.invoke('delete-installation', installationId),
   
   // ============================================================
@@ -99,8 +139,24 @@ contextBridge.exposeInMainWorld('api', {
   
   getUpcomingMaintenance: () => ipcRenderer.invoke('get-upcoming-maintenance'),
   registerMaintenance: (data) => ipcRenderer.invoke('register-maintenance', data),
-  calculateNextMaintenanceDate: (lastDate, frequency) => 
-    ipcRenderer.invoke('calculate-next-maintenance-date', { lastMaintenanceDate: lastDate, frequency }),
+  
+  // Función mejorada para calcular próxima fecha de mantenimiento
+  calculateNextMaintenanceDate: (lastDate, frequency) => {
+    try {
+      // Implementación local para evitar el IPC
+      if (!lastDate) return null;
+      
+      const lastDateObj = new Date(lastDate);
+      const nextDateObj = new Date(lastDateObj);
+      nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(frequency, 10));
+      
+      // Devolver en formato YYYY-MM-DD
+      return nextDateObj.toISOString().split('T')[0];
+    } catch (error) {
+      console.error('Error al calcular fecha de próximo mantenimiento:', error);
+      return null;
+    }
+  },
   
   // ============================================================
   // WhatsApp
@@ -110,11 +166,25 @@ contextBridge.exposeInMainWorld('api', {
   isWhatsAppConnected: () => ipcRenderer.invoke('is-whatsapp-connected'),
   logoutWhatsApp: () => ipcRenderer.invoke('logout-whatsapp'),
   
+  // Nuevas funciones para WhatsApp
+  initializeWhatsApp: () => ipcRenderer.invoke('initialize-whatsapp'),
+  getWhatsAppChats: () => ipcRenderer.invoke('get-whatsapp-chats'),
+  
   // ============================================================
   // Utilidades
   // ============================================================
   
-  generateId: () => ipcRenderer.invoke('generate-id'),
+  // Función segura para generar ID
+  generateId: async () => {
+    try {
+      return await ipcRenderer.invoke('generate-id');
+    } catch (error) {
+      console.error('Error al generar ID:', error);
+      // Generar un ID local como fallback
+      return 'local-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+    }
+  },
+  
   formatDate: (date) => ipcRenderer.invoke('format-date', date),
   
   // ============================================================

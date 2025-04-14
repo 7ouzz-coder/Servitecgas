@@ -1,56 +1,68 @@
 // Cargar la lista de instalaciones
 async function loadInstallations() {
-    const installationsSection = document.getElementById('installations-section');
+  const installationsSection = document.getElementById('installations-section');
+  
+  try {
+    installationsSection.innerHTML = `
+      <div class="text-center my-5">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-2">Cargando instalaciones...</p>
+      </div>
+    `;
     
-    try {
-      const installations = await window.api.getInstallations();
-      const clients = await window.api.getClients();
+    const installations = await window.api.getInstallations();
+    const clients = await window.api.getClients();
+    
+    installationsSection.innerHTML = `
+      <h2 class="mb-4">Gestión de Instalaciones</h2>
       
-      installationsSection.innerHTML = `
-        <h2 class="mb-4">Gestión de Instalaciones</h2>
-        
-        <div class="row mb-4">
-          <div class="col-md-4">
-            <select id="installationClientFilter" class="form-select">
-              <option value="">Todos los clientes</option>
-              ${renderClientOptions(clients)}
-            </select>
-          </div>
-          <div class="col-md-4">
-            <select id="installationTypeFilter" class="form-select">
-              <option value="">Todos los tipos</option>
-              <option value="Residencial">Residencial</option>
-              <option value="Comercial">Comercial</option>
-              <option value="Industrial">Industrial</option>
-            </select>
-          </div>
-          <div class="col-md-4 text-end">
-            <button id="addInstallationButton" class="btn btn-primary">
-              <i class="bi bi-plus-circle"></i> Agregar Instalación
-            </button>
-          </div>
+      <div class="row mb-4">
+        <div class="col-md-4">
+          <select id="installationClientFilter" class="form-select">
+            <option value="">Todos los clientes</option>
+            ${renderClientOptions(clients)}
+          </select>
         </div>
-        
-        <div id="installationsContainer">
-          ${renderInstallationsList(installations, clients)}
+        <div class="col-md-4">
+          <select id="installationTypeFilter" class="form-select">
+            <option value="">Todos los tipos</option>
+            <option value="Residencial">Residencial</option>
+            <option value="Comercial">Comercial</option>
+            <option value="Industrial">Industrial</option>
+          </select>
         </div>
-        
-        ${installations.length === 0 ? 
-          `<div class="alert alert-info text-center">
-            No hay instalaciones registradas. Agrega tu primera instalación haciendo clic en "Agregar Instalación".
-          </div>` : ''}
-      `;
+        <div class="col-md-4 text-end">
+          <button id="addInstallationButton" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Agregar Instalación
+          </button>
+        </div>
+      </div>
       
-      setupInstallationsEvents();
+      <div id="installationsContainer">
+        ${renderInstallationsList(installations, clients)}
+      </div>
       
-    } catch (error) {
-      installationsSection.innerHTML = `
-        <div class="alert alert-danger">
-          Error al cargar instalaciones: ${error.message}
-        </div>
-      `;
-    }
+      ${installations.length === 0 ? 
+        `<div class="alert alert-info text-center">
+          No hay instalaciones registradas. Agrega tu primera instalación haciendo clic en "Agregar Instalación".
+        </div>` : ''}
+    `;
+    
+    // Configurar eventos
+    setupInstallationsEvents();
+    
+  } catch (error) {
+    console.error('Error al cargar instalaciones:', error);
+    installationsSection.innerHTML = `
+      <div class="alert alert-danger">
+        <h4>Error al cargar instalaciones</h4>
+        <p>${error.message || 'Error desconocido'}</p>
+      </div>
+    `;
   }
+}
   
   // Renderizar opciones de clientes para el select
   function renderClientOptions(clients) {
@@ -61,52 +73,71 @@ async function loadInstallations() {
   
   // Renderizar lista de instalaciones
   function renderInstallationsList(installations, clients) {
-    if (installations.length === 0) {
+    if (!installations || installations.length === 0) {
       return '';
     }
     
     return `
       <div class="row">
         ${installations.map(installation => {
-          const client = clients.find(c => c.id === installation.clientId) || { name: 'Cliente no encontrado' };
-          const totalComponents = installation.components ? installation.components.length : 0;
-          const pendingMaintenance = installation.components ? 
-            installation.components.filter(comp => {
-              if (!comp.nextMaintenanceDate) return false;
+          // Asegurarse de que todas las propiedades existan
+          const safeInstallation = {
+            id: installation.id || 'unknown',
+            clientId: installation.clientId || '',
+            address: installation.address || 'Sin dirección',
+            type: installation.type || 'No especificado',
+            date: installation.date || '',
+            notes: installation.notes || '',
+            components: Array.isArray(installation.components) ? installation.components : []
+          };
+          
+          // Buscar el cliente
+          const client = clients.find(c => c.id === safeInstallation.clientId) || { name: 'Cliente no encontrado' };
+          
+          // Contar componentes con mantenimientos pendientes
+          const totalComponents = safeInstallation.components.length;
+          const pendingMaintenance = safeInstallation.components.filter(comp => {
+            if (!comp || !comp.nextMaintenanceDate) return false;
+            
+            try {
               const nextDate = new Date(comp.nextMaintenanceDate);
               const today = new Date();
               return nextDate >= today && ((nextDate - today) / (1000 * 60 * 60 * 24)) <= 30;
-            }).length : 0;
+            } catch (error) {
+              console.error('Error al calcular días hasta mantenimiento:', error);
+              return false;
+            }
+          }).length;
           
           return `
             <div class="col-md-6 mb-4 installation-item" 
-                 data-client-id="${installation.clientId}" 
-                 data-type="${installation.type || ''}">
+                 data-client-id="${safeInstallation.clientId}" 
+                 data-type="${safeInstallation.type}">
               <div class="card installation-card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                   <h5 class="mb-0">${client.name}</h5>
-                  <span class="badge ${getBadgeForType(installation.type)}">${installation.type || 'No especificado'}</span>
+                  <span class="badge ${getBadgeForType(safeInstallation.type)}">${safeInstallation.type}</span>
                 </div>
                 <div class="card-body">
-                  <p><strong>Dirección:</strong> ${installation.address}</p>
-                  <p><strong>Fecha de instalación:</strong> ${formatDate(installation.date)}</p>
+                  <p><strong>Dirección:</strong> ${safeInstallation.address}</p>
+                  <p><strong>Fecha de instalación:</strong> ${formatDate(safeInstallation.date)}</p>
                   <p>
                     <strong>Componentes:</strong> ${totalComponents} 
                     ${pendingMaintenance > 0 ? 
                       `<span class="badge bg-warning ms-2">${pendingMaintenance} mantención(es) próxima(s)</span>` : 
                       ''}
                   </p>
-                  ${installation.notes ? `<p><strong>Notas:</strong> ${installation.notes}</p>` : ''}
+                  ${safeInstallation.notes ? `<p><strong>Notas:</strong> ${safeInstallation.notes}</p>` : ''}
                 </div>
                 <div class="card-footer bg-transparent">
                   <div class="btn-group w-100">
-                    <button class="btn btn-sm btn-outline-primary view-installation-btn" data-id="${installation.id}">
+                    <button class="btn btn-sm btn-outline-primary view-installation-btn" data-id="${safeInstallation.id}">
                       <i class="bi bi-eye"></i> Detalles
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary edit-installation-btn" data-id="${installation.id}">
+                    <button class="btn btn-sm btn-outline-secondary edit-installation-btn" data-id="${safeInstallation.id}">
                       <i class="bi bi-pencil"></i> Editar
                     </button>
-                    <button class="btn btn-sm btn-outline-danger delete-installation-btn" data-id="${installation.id}" data-address="${installation.address}">
+                    <button class="btn btn-sm btn-outline-danger delete-installation-btn" data-id="${safeInstallation.id}" data-address="${safeInstallation.address}">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>
@@ -144,27 +175,224 @@ async function loadInstallations() {
     }
     
     // Botón para agregar instalación
-    const addInstallationButton = document.getElementById('addInstallationButton');
-    if (addInstallationButton) {
-      addInstallationButton.addEventListener('click', async () => {
-        // Limpiar formulario
-        document.getElementById('installationForm').reset();
-        document.getElementById('installationModalLabel').textContent = 'Agregar Instalación';
-        document.getElementById('installationId').value = '';
+  const addInstallationButton = document.getElementById('addInstallationButton');
+  if (addInstallationButton) {
+    addInstallationButton.addEventListener('click', async () => {
+      // Limpiar formulario
+      document.getElementById('installationForm').reset();
+      document.getElementById('installationModalLabel').textContent = 'Agregar Instalación';
+      document.getElementById('installationId').value = '';
+      
+      // Limpiar contenedor de componentes
+      const componentsContainer = document.getElementById('componentsContainer');
+      componentsContainer.innerHTML = '';
+      
+      // Cargar lista de clientes en el select
+      await populateClientSelect();
+      
+      // Mostrar modal
+      const installationModal = new bootstrap.Modal(document.getElementById('installationModal'));
+      installationModal.show();
+    });
+  }
+  
+  // MANEJAR BOTONES DE EDITAR, ELIMINAR Y VER DETALLES
+  setupActionButtons();
+}
+
+  // Configurar todos los botones de acción
+function setupActionButtons() {
+  // Botones de editar instalación
+  document.querySelectorAll('.edit-installation-btn').forEach(button => {
+    button.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Evitar propagación del evento
+      const installationId = button.getAttribute('data-id');
+      
+      try {
+        const installations = await window.api.getInstallations();
+        const installation = installations.find(i => i.id === installationId);
         
-        // Limpiar contenedor de componentes
+        if (!installation) {
+          showAlert('warning', 'No se encontró la instalación');
+          return;
+        }
+        
+        // Llenar formulario con datos de la instalación
+        document.getElementById('installationId').value = installation.id;
+        document.getElementById('installationAddress').value = installation.address;
+        document.getElementById('installationType').value = installation.type || 'Residencial';
+        document.getElementById('installationDate').value = installation.date || '';
+        document.getElementById('installationNotes').value = installation.notes || '';
+        
+        // Cargar lista de clientes y seleccionar el cliente
+        await populateClientSelect(installation.clientId);
+        
+        // Cargar componentes
         const componentsContainer = document.getElementById('componentsContainer');
         componentsContainer.innerHTML = '';
         
-        // Cargar lista de clientes en el select
-        await populateClientSelect();
+        if (installation.components && installation.components.length > 0) {
+          installation.components.forEach(component => {
+            addComponentToForm(component);
+          });
+        }
+        
+        document.getElementById('installationModalLabel').textContent = 'Editar Instalación';
         
         // Mostrar modal
         const installationModal = new bootstrap.Modal(document.getElementById('installationModal'));
         installationModal.show();
-      });
-    }
-  }
+      } catch (error) {
+        console.error('Error al cargar instalación para editar:', error);
+        showAlert('danger', 'Error al cargar la instalación para editar');
+      }
+    });
+  });
+  
+  // Botones de eliminar instalación
+  document.querySelectorAll('.delete-installation-btn').forEach(button => {
+    button.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Evitar propagación del evento
+      const installationId = button.getAttribute('data-id');
+      const address = button.getAttribute('data-address') || 'esta instalación';
+      
+      if (confirm(`¿Estás seguro de que deseas eliminar la instalación en ${address}?`)) {
+        try {
+          await window.api.deleteInstallation(installationId);
+          showAlert('success', 'Instalación eliminada correctamente');
+          loadInstallations();
+        } catch (error) {
+          console.error('Error al eliminar instalación:', error);
+          showAlert('danger', `Error al eliminar instalación: ${error.message}`);
+        }
+      }
+    });
+  });
+  
+  // Botones de ver detalles de instalación
+  document.querySelectorAll('.view-installation-btn').forEach(button => {
+    button.addEventListener('click', async (e) => {
+      e.stopPropagation(); // Evitar propagación del evento
+      const installationId = button.getAttribute('data-id');
+      
+      try {
+        const installations = await window.api.getInstallations();
+        const clients = await window.api.getClients();
+        
+        const installation = installations.find(i => i.id === installationId);
+        if (!installation) {
+          showAlert('warning', 'No se encontró la instalación');
+          return;
+        }
+        
+        const client = clients.find(c => c.id === installation.clientId) || { name: 'Cliente no encontrado' };
+        
+        // Crear modal para visualizar detalles
+        const detailsModal = document.createElement('div');
+        detailsModal.innerHTML = `
+          <div class="modal fade" id="installationDetailsModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">Detalles de Instalación</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="row mb-3">
+                    <div class="col-md-6">
+                      <p><strong>Cliente:</strong> ${client.name}</p>
+                      <p><strong>Dirección:</strong> ${installation.address}</p>
+                      <p><strong>Tipo:</strong> ${installation.type || 'No especificado'}</p>
+                      <p><strong>Fecha de Instalación:</strong> ${formatDate(installation.date)}</p>
+                    </div>
+                    <div class="col-md-6">
+                      <p><strong>Teléfono:</strong> ${client.phone || 'No registrado'}</p>
+                      <p><strong>Email:</strong> ${client.email || 'No registrado'}</p>
+                      ${installation.notes ? `<p><strong>Notas:</strong> ${installation.notes}</p>` : ''}
+                    </div>
+                  </div>
+                  
+                  <h6 class="mb-3">Componentes</h6>
+                  ${installation.components && installation.components.length > 0 ? `
+                    <div class="table-responsive">
+                      <table class="table table-bordered">
+                        <thead>
+                          <tr>
+                            <th>Componente</th>
+                            <th>Marca/Modelo</th>
+                            <th>Última Mantención</th>
+                            <th>Frecuencia (meses)</th>
+                            <th>Próxima Mantención</th>
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${installation.components.map(component => {
+                            const today = new Date();
+                            const nextMaintenance = component.nextMaintenanceDate ? new Date(component.nextMaintenanceDate) : null;
+                            let status = '';
+                            let statusClass = '';
+                            
+                            if (nextMaintenance) {
+                              const diffDays = Math.floor((nextMaintenance - today) / (1000 * 60 * 60 * 24));
+                              if (diffDays < 0) {
+                                status = 'Vencido';
+                                statusClass = 'text-danger';
+                              } else if (diffDays <= 7) {
+                                status = 'Urgente';
+                                statusClass = 'text-danger';
+                              } else if (diffDays <= 30) {
+                                status = 'Próximo';
+                                statusClass = 'text-warning';
+                              } else {
+                                status = 'Al día';
+                                statusClass = 'text-success';
+                              }
+                            } else {
+                              status = 'No programado';
+                              statusClass = 'text-secondary';
+                            }
+                            
+                            return `
+                              <tr>
+                                <td>${component.name}</td>
+                                <td>${component.model || '-'}</td>
+                                <td>${formatDate(component.lastMaintenanceDate)}</td>
+                                <td>${component.frequency || 12}</td>
+                                <td>${formatDate(component.nextMaintenanceDate)}</td>
+                                <td class="${statusClass}">${status}</td>
+                              </tr>
+                            `;
+                          }).join('')}
+                        </tbody>
+                      </table>
+                    </div>
+                  ` : '<p class="text-muted">No hay componentes registrados</p>'}
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Agregar modal al DOM y mostrarlo
+        document.body.appendChild(detailsModal.firstElementChild);
+        const modal = new bootstrap.Modal(document.getElementById('installationDetailsModal'));
+        modal.show();
+        
+        // Eliminar del DOM cuando se cierre
+        document.getElementById('installationDetailsModal').addEventListener('hidden.bs.modal', function () {
+          this.remove();
+        });
+      } catch (error) {
+        console.error('Error al mostrar detalles de instalación:', error);
+        showAlert('danger', 'Error al mostrar detalles de la instalación');
+      }
+    });
+  });
+}
   
   // Filtrar instalaciones según los criterios seleccionados
   function filterInstallations() {
@@ -224,7 +452,7 @@ async function loadInstallations() {
     
     // Si hay datos, llenar el formulario
     if (componentData) {
-      clone.querySelector('.component-id').value = componentData.id;
+      clone.querySelector('.component-id').value = componentData.id || '';
       clone.querySelector('.component-name').value = componentData.name || '';
       clone.querySelector('.component-model').value = componentData.model || '';
       clone.querySelector('.component-last-maintenance').value = componentData.lastMaintenanceDate || '';
@@ -240,18 +468,31 @@ async function loadInstallations() {
     
     const calculateNextMaintenance = () => {
       if (lastMaintenanceInput.value && frequencyInput.value) {
-        nextMaintenanceInput.value = window.api.calculateNextMaintenanceDate(
-          lastMaintenanceInput.value, 
-          frequencyInput.value
-        );
+        // Cálculo local de la próxima fecha
+        try {
+          const lastDate = new Date(lastMaintenanceInput.value);
+          const nextDate = new Date(lastDate);
+          const frequency = parseInt(frequencyInput.value, 10) || 12;
+          
+          // Sumar meses
+          nextDate.setMonth(nextDate.getMonth() + frequency);
+          
+          // Formato YYYY-MM-DD
+          const nextDateStr = nextDate.toISOString().split('T')[0];
+          nextMaintenanceInput.value = nextDateStr;
+        } catch (error) {
+          console.error('Error al calcular próxima fecha:', error);
+        }
       }
     };
     
     lastMaintenanceInput.addEventListener('change', calculateNextMaintenance);
     frequencyInput.addEventListener('change', calculateNextMaintenance);
     
-    if (componentData && componentData.lastMaintenanceDate && componentData.frequency) {
-      calculateNextMaintenance();
+    // Calcular fecha inicial si hay datos
+    if (componentData && componentData.lastMaintenanceDate) {
+      // Esperar al siguiente ciclo para asegurar que los valores estén asignados
+      setTimeout(calculateNextMaintenance, 0);
     }
     
     // Evento para eliminar componente
@@ -267,7 +508,19 @@ async function loadInstallations() {
   // Formatear fecha
   function formatDate(dateString) {
     if (!dateString) return '-';
-    return window.api.formatDate(dateString);
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return '-';
+      }
+      
+      // Formatear la fecha directamente
+      return date.toLocaleDateString();
+    } catch (error) {
+      console.error("Error al formatear fecha:", error);
+      return dateString || '-';
+    }
   }
   
   // Exportar funciones
@@ -448,68 +701,112 @@ async function loadInstallations() {
     
     // Configurar guardar instalación
     const saveInstallationBtn = document.getElementById('saveInstallationBtn');
-    if (saveInstallationBtn) {
-      saveInstallationBtn.addEventListener('click', async () => {
-        const installationForm = document.getElementById('installationForm');
+if (saveInstallationBtn) {
+  saveInstallationBtn.addEventListener('click', async () => {
+    const installationForm = document.getElementById('installationForm');
+    
+    // Validación básica
+    if (!installationForm.checkValidity()) {
+      installationForm.reportValidity();
+      return;
+    }
+    
+    // Mostrar indicador de carga
+    saveInstallationBtn.disabled = true;
+    const originalText = saveInstallationBtn.innerHTML;
+    saveInstallationBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+    
+    try {
+      // Recopilar datos usando solo valores primitivos, no objetos del DOM o referencias
+      const installationId = document.getElementById('installationId').value;
+      const clientId = document.getElementById('installationClient').value;
+      const address = document.getElementById('installationAddress').value;
+      const type = document.getElementById('installationType').value;
+      const date = document.getElementById('installationDate').value;
+      const notes = document.getElementById('installationNotes').value;
+      
+      // Generar un nuevo ID si es necesario
+      let finalId = installationId;
+      if (!finalId) {
+        try {
+          finalId = await window.api.generateId();
+        } catch (error) {
+          console.error('Error al generar ID:', error);
+          finalId = 'temp-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+        }
+      }
+      
+      // Recopilar componentes de manera segura
+      const components = [];
+      const componentItems = document.querySelectorAll('.component-item');
+      
+      for (let i = 0; i < componentItems.length; i++) {
+        const item = componentItems[i];
         
-        // Validación básica
-        if (!installationForm.checkValidity()) {
-          installationForm.reportValidity();
-          return;
+        // Generar ID para el componente si no existe
+        let componentId = item.querySelector('.component-id').value;
+        if (!componentId) {
+          try {
+            componentId = await window.api.generateId();
+          } catch (error) {
+            console.error('Error al generar ID de componente:', error);
+            componentId = 'comp-' + Date.now() + '-' + i;
+          }
         }
         
-        // Recopilar datos de la instalación
-        const installationId = document.getElementById('installationId').value;
-        const clientId = document.getElementById('installationClient').value;
-        const address = document.getElementById('installationAddress').value;
-        const type = document.getElementById('installationType').value;
-        const date = document.getElementById('installationDate').value;
-        const notes = document.getElementById('installationNotes').value;
-        
-        // Recopilar componentes
-        const components = [];
-        const componentItems = document.querySelectorAll('.component-item');
-        componentItems.forEach(item => {
-          const component = {
-            id: item.querySelector('.component-id').value || window.api.generateId(),
-            name: item.querySelector('.component-name').value,
-            model: item.querySelector('.component-model').value,
-            lastMaintenanceDate: item.querySelector('.component-last-maintenance').value,
-            frequency: item.querySelector('.component-frequency').value,
-            nextMaintenanceDate: item.querySelector('.component-next-maintenance').value,
-            notes: item.querySelector('.component-notes').value
-          };
-          components.push(component);
-        });
-        
-        const installation = {
-          id: installationId || window.api.generateId(),
-          clientId,
-          address,
-          type,
-          date,
-          notes,
-          components
+        // Crear objeto con solo valores primitivos
+        const component = {
+          id: componentId,
+          name: item.querySelector('.component-name').value || '',
+          model: item.querySelector('.component-model').value || '',
+          lastMaintenanceDate: item.querySelector('.component-last-maintenance').value || '',
+          frequency: item.querySelector('.component-frequency').value || '12',
+          nextMaintenanceDate: item.querySelector('.component-next-maintenance').value || '',
+          notes: item.querySelector('.component-notes').value || ''
         };
         
-        try {
-          if (installationId) {
-            // Actualizar instalación existente
-            await window.api.updateInstallation(installation);
-            showAlert('success', 'Instalación actualizada correctamente');
-          } else {
-            // Agregar nueva instalación
-            await window.api.addInstallation(installation);
-            showAlert('success', 'Instalación agregada correctamente');
-          }
-          
-          // Cerrar modal y recargar lista
-          const modal = bootstrap.Modal.getInstance(document.getElementById('installationModal'));
-          modal.hide();
-          loadInstallations();
-          
-        } catch (error) {
-          showAlert('danger', `Error al guardar instalación: ${error.message}`);
-        }
-      });
+        // Asegurarse de que no hay referencias o propiedades especiales
+        const safeComponent = JSON.parse(JSON.stringify(component));
+        components.push(safeComponent);
+      }
+      
+      // Crear objeto de instalación seguro (solo primitivos)
+      const installation = {
+        id: finalId,
+        clientId: clientId,
+        address: address,
+        type: type,
+        date: date,
+        notes: notes,
+        components: components
+      };
+      
+      // Un paso adicional de seguridad: serializar a JSON y volver a parsear
+      // Esto garantiza que no hay objetos especiales que no se puedan serializar
+      const safeInstallation = JSON.parse(JSON.stringify(installation));
+      
+      // Enviar al backend
+      if (installationId) {
+        // Actualizar instalación existente
+        await window.api.updateInstallation(safeInstallation);
+        showAlert('success', 'Instalación actualizada correctamente');
+      } else {
+        // Agregar nueva instalación
+        await window.api.addInstallation(safeInstallation);
+        showAlert('success', 'Instalación agregada correctamente');
+      }
+      
+      // Cerrar modal y recargar lista
+      const modal = bootstrap.Modal.getInstance(document.getElementById('installationModal'));
+      modal.hide();
+      loadInstallations();
+    } catch (error) {
+      console.error('Error completo al guardar instalación:', error);
+      showAlert('danger', `Error al guardar instalación: ${error.message || 'Error desconocido'}`);
+    } finally {
+      // Restaurar botón
+      saveInstallationBtn.disabled = false;
+      saveInstallationBtn.innerHTML = originalText;
     }
+  });
+}
