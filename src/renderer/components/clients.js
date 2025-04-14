@@ -2,100 +2,99 @@
 
 // Cargar la lista de clientes
 async function loadClients() {
-    const clientsSection = document.getElementById('clients-section');
+  const clientsSection = document.getElementById('clients-section');
+  
+  try {
+    const clients = await window.api.getClients();
     
-    try {
-      const clients = await window.api.getClients();
+    clientsSection.innerHTML = `
+      <h2 class="mb-4">Gestión de Clientes</h2>
       
-      clientsSection.innerHTML = `
-        <h2 class="mb-4">Gestión de Clientes</h2>
-        
-        <div class="row mb-4">
-          <div class="col-md-6">
-            <input type="text" id="clientSearchInput" class="form-control" placeholder="Buscar cliente por nombre o teléfono...">
-          </div>
-          <div class="col-md-6 text-end">
-            <button id="addClientButton" class="btn btn-primary">
-              <i class="bi bi-person-plus"></i> Agregar Cliente
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <input type="text" id="clientSearchInput" class="form-control" placeholder="Buscar cliente por nombre o teléfono...">
+        </div>
+        <div class="col-md-6 text-end">
+          <button id="addClientButton" class="btn btn-primary">
+            <i class="bi bi-person-plus"></i> Agregar Cliente
+          </button>
+        </div>
+      </div>
+      
+      <div class="row" id="clientsContainer">
+        ${renderClientsList(clients)}
+      </div>
+      
+      ${clients.length === 0 ? 
+        `<div class="alert alert-info text-center">
+          No hay clientes registrados. Agrega tu primer cliente haciendo clic en "Agregar Cliente".
+        </div>` : ''}
+    `;
+    
+    setupClientsEvents();
+    
+  } catch (error) {
+    clientsSection.innerHTML = `
+      <div class="alert alert-danger">
+        Error al cargar clientes: ${error.message}
+      </div>
+    `;
+  }
+}
+
+// Renderizar lista de clientes
+function renderClientsList(clients) {
+  if (clients.length === 0) {
+    return '';
+  }
+  
+  return clients.map(client => `
+    <div class="col-md-4 mb-4">
+      <div class="card client-card h-100" data-id="${client.id}">
+        <div class="card-body">
+          <h5 class="card-title">${client.name}</h5>
+          <p class="card-text">
+            <strong><i class="bi bi-telephone"></i> Teléfono:</strong> ${client.phone || 'No registrado'}<br>
+            <strong><i class="bi bi-envelope"></i> Email:</strong> ${client.email || 'No registrado'}<br>
+            ${client.notes ? `<strong><i class="bi bi-journal-text"></i> Notas:</strong> ${client.notes}` : ''}
+          </p>
+        </div>
+        <div class="card-footer bg-transparent">
+          <div class="btn-group w-100">
+            <button class="btn btn-sm btn-outline-primary view-installations-btn" data-id="${client.id}" data-name="${client.name}">
+              <i class="bi bi-wrench"></i> Instalaciones
+            </button>
+            <button class="btn btn-sm btn-outline-secondary edit-client-btn" data-id="${client.id}">
+              <i class="bi bi-pencil"></i> Editar
+            </button>
+            <button class="btn btn-sm btn-outline-success send-whatsapp-client-btn" data-id="${client.id}" data-name="${client.name}" data-phone="${client.phone || ''}">
+              <i class="bi bi-whatsapp"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger delete-client-btn" data-id="${client.id}" data-name="${client.name}">
+              <i class="bi bi-trash"></i>
             </button>
           </div>
         </div>
-        
-        <div class="row" id="clientsContainer">
-          ${renderClientsList(clients)}
-        </div>
-        
-        ${clients.length === 0 ? 
-          `<div class="alert alert-info text-center">
-            No hay clientes registrados. Agrega tu primer cliente haciendo clic en "Agregar Cliente".
-          </div>` : ''}
-      `;
-      
-      setupClientsEvents();
-      
-    } catch (error) {
-      clientsSection.innerHTML = `
-        <div class="alert alert-danger">
-          Error al cargar clientes: ${error.message}
-        </div>
-      `;
-    }
-  }
-  
-  // Renderizar lista de clientes
-  function renderClientsList(clients) {
-    if (clients.length === 0) {
-      return '';
-    }
-    
-    return clients.map(client => `
-      <div class="col-md-4 mb-4">
-        <div class="card client-card h-100" data-id="${client.id}">
-          <div class="card-body">
-            <h5 class="card-title">${client.name}</h5>
-            <p class="card-text">
-              <strong><i class="bi bi-telephone"></i> Teléfono:</strong> ${client.phone || 'No registrado'}<br>
-              <strong><i class="bi bi-envelope"></i> Email:</strong> ${client.email || 'No registrado'}<br>
-              ${client.notes ? `<strong><i class="bi bi-journal-text"></i> Notas:</strong> ${client.notes}` : ''}
-            </p>
-          </div>
-          <div class="card-footer bg-transparent">
-            <div class="btn-group w-100">
-              <button class="btn btn-sm btn-outline-primary view-installations-btn" data-id="${client.id}" data-name="${client.name}">
-                <i class="bi bi-wrench"></i> Instalaciones
-              </button>
-              <button class="btn btn-sm btn-outline-secondary edit-client-btn" data-id="${client.id}">
-                <i class="bi bi-pencil"></i> Editar
-              </button>
-              <button class="btn btn-sm btn-outline-success send-whatsapp-client-btn" data-id="${client.id}" data-name="${client.name}" data-phone="${client.phone || ''}">
-                <i class="bi bi-whatsapp"></i>
-              </button>
-              <button class="btn btn-sm btn-outline-danger delete-client-btn" data-id="${client.id}" data-name="${client.name}">
-                <i class="bi bi-trash"></i>
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
-    `).join('');
-  }
+    </div>
+  `).join('');
+}
+
+// Limpiamos los event listeners existentes
+function setupClientSaveButton() {
+  // Primero, obtener el botón
+  const saveClientBtn = document.getElementById('saveClientBtn');
+  if (!saveClientBtn) return;
   
-  // Configurar eventos para la sección de clientes
+  // Quitar todos los event listeners existentes
+  const newSaveBtn = saveClientBtn.cloneNode(true);
+  saveClientBtn.parentNode.replaceChild(newSaveBtn, saveClientBtn);
+  
+  // Agregar nuevo event listener
+  newSaveBtn.addEventListener('click', saveClient);
+}
 
-  function setupClientSaveButton() {
-    // Primero, obtener el botón
-    const saveClientBtn = document.getElementById('saveClientBtn');
-    if (!saveClientBtn) return;
-    
-    // Quitar todos los event listeners existentes
-    const newSaveBtn = saveClientBtn.cloneNode(true);
-    saveClientBtn.parentNode.replaceChild(newSaveBtn, saveClientBtn);
-    
-    // Agregar nuevo event listener
-    newSaveBtn.addEventListener('click', saveClient);
-  }
-
-  // Función para guardar cliente
+// Función para guardar cliente
 async function saveClient() {
   try {
     // Deshabilitar el botón para evitar múltiples envíos
@@ -263,63 +262,64 @@ function setupClientActionButtons() {
       }
     });
   });
-    
-    // Botones para ver instalaciones
-    const viewInstallationsButtons = document.querySelectorAll('.view-installations-btn');
-    viewInstallationsButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        const clientId = button.getAttribute('data-id');
-        const clientName = button.getAttribute('data-name');
-        
-        // Cambiar a la sección de instalaciones
-        const installationsLink = document.querySelector('[data-section="installations"]');
-        installationsLink.click();
-        
-        // Esperar a que cargue y filtrar por cliente
-        setTimeout(() => {
-          const clientFilterSelect = document.getElementById('installationClientFilter');
-          if (clientFilterSelect) {
-            clientFilterSelect.value = clientId;
-            // Disparar evento de cambio para activar el filtro
-            clientFilterSelect.dispatchEvent(new Event('change'));
-          }
-        }, 300);
-      });
-    });
-    
-    // Botones de WhatsApp
-    const whatsappButtons = document.querySelectorAll('.send-whatsapp-client-btn');
-    whatsappButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        const clientId = button.getAttribute('data-id');
-        const clientName = button.getAttribute('data-name');
-        const clientPhone = button.getAttribute('data-phone');
-        
-        if (!clientPhone) {
-          showAlert('warning', 'Este cliente no tiene un número de teléfono registrado');
-          return;
-        }
-        
-        // Configurar modal de WhatsApp
-        document.getElementById('whatsappRecipientId').value = clientId;
-        document.getElementById('whatsappRecipientName').value = clientName;
-        document.getElementById('whatsappRecipientPhone').value = clientPhone;
-        
-        // Establecer plantilla de mensaje
-        document.getElementById('whatsappMessageTemplate').value = 'followup';
-        
-        // Crear mensaje
-        const messageData = {
-          clientName
-        };
-        
-        document.getElementById('whatsappMessage').value = createMessageTemplate('followup', messageData);
-        
-        // Mostrar modal
-        const whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
-        whatsappModal.show();
-      });
-    });
   
-  // Exportar funciones
-  window.loadClients = loadClients;
+  // Botones para ver instalaciones
+  const viewInstallationsButtons = document.querySelectorAll('.view-installations-btn');
+  viewInstallationsButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const clientId = button.getAttribute('data-id');
+      const clientName = button.getAttribute('data-name');
+      
+      // Cambiar a la sección de instalaciones
+      const installationsLink = document.querySelector('[data-section="installations"]');
+      installationsLink.click();
+      
+      // Esperar a que cargue y filtrar por cliente
+      setTimeout(() => {
+        const clientFilterSelect = document.getElementById('installationClientFilter');
+        if (clientFilterSelect) {
+          clientFilterSelect.value = clientId;
+          // Disparar evento de cambio para activar el filtro
+          clientFilterSelect.dispatchEvent(new Event('change'));
+        }
+      }, 300);
+    });
+  });
+  
+  // Botones de WhatsApp
+  const whatsappButtons = document.querySelectorAll('.send-whatsapp-client-btn');
+  whatsappButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const clientId = button.getAttribute('data-id');
+      const clientName = button.getAttribute('data-name');
+      const clientPhone = button.getAttribute('data-phone');
+      
+      if (!clientPhone) {
+        showAlert('warning', 'Este cliente no tiene un número de teléfono registrado');
+        return;
+      }
+      
+      // Configurar modal de WhatsApp
+      document.getElementById('whatsappRecipientId').value = clientId;
+      document.getElementById('whatsappRecipientName').value = clientName;
+      document.getElementById('whatsappRecipientPhone').value = clientPhone;
+      
+      // Establecer plantilla de mensaje
+      document.getElementById('whatsappMessageTemplate').value = 'followup';
+      
+      // Crear mensaje
+      const messageData = {
+        clientName
+      };
+      
+      document.getElementById('whatsappMessage').value = createMessageTemplate('followup', messageData);
+      
+      // Mostrar modal
+      const whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
+      whatsappModal.show();
+    });
+  });
+}
+
+// Exportar funciones
+window.loadClients = loadClients;
