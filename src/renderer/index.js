@@ -88,6 +88,9 @@ function initNavigation() {
             case 'notifications':
               loadNotifications();
               break;
+            case 'whatsapp':
+              loadWhatsAppSection(); // NEW
+              break;
             case 'reports':
               loadReports();
               break;

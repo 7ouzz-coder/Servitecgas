@@ -11,6 +11,7 @@ let isWhatsAppReady = false;
 let sessionDataPath = null;
 let mainWindowRef = null;
 let initializationInProgress = false;
+let autoInitOnStartup = false; // Nuevo flag para controlar la inicialización automática
 
 /**
  * Configura el servicio de WhatsApp
@@ -34,8 +35,13 @@ function setupWhatsAppService(mainWindow) {
   // Configurar manejadores IPC
   setupWhatsAppIpcHandlers();
   
-  // Intentar cargar sesión existente
-  initializeWhatsAppClient();
+  // Verificar si existe una sesión guardada, pero no inicializar automáticamente
+  if (fs.existsSync(sessionDataPath) && autoInitOnStartup) {
+    console.log('Sesión de WhatsApp encontrada, iniciando automáticamente...');
+    initializeWhatsAppClient();
+  } else {
+    console.log('No se inicia WhatsApp automáticamente. El usuario deberá conectarse manualmente.');
+  }
 }
 
 /**
@@ -111,6 +117,17 @@ function initializeWhatsAppClient() {
     whatsappClient.on('ready', () => {
       console.log('Cliente WhatsApp listo');
       isWhatsAppReady = true;
+      initializationInProgress = false;
+      
+      // Guardar la sesión cuando esté lista
+      if (whatsappClient.session && sessionDataPath) {
+        try {
+          fs.writeFileSync(sessionDataPath, JSON.stringify(whatsappClient.session), 'utf8');
+          console.log('Sesión de WhatsApp guardada correctamente');
+        } catch (error) {
+          console.error('Error al guardar sesión de WhatsApp:', error);
+        }
+      }
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
         mainWindowRef.webContents.send('whatsapp-ready');
@@ -333,5 +350,6 @@ module.exports = {
   setupWhatsAppService,
   sendWhatsAppMessage,
   isWhatsAppConnected,
-  logoutWhatsApp
+  logoutWhatsApp,
+  initializeWhatsAppClient // Exportamos esta función para que pueda ser llamada explícitamente
 };
