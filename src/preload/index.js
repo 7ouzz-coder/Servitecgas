@@ -100,7 +100,7 @@ contextBridge.exposeInMainWorld('api', {
   getUpcomingMaintenance: () => ipcRenderer.invoke('get-upcoming-maintenance'),
   registerMaintenance: (data) => ipcRenderer.invoke('register-maintenance', data),
   calculateNextMaintenanceDate: (lastDate, frequency) => 
-    ipcRenderer.invoke('calculate-next-maintenance', { lastMaintenanceDate: lastDate, frequency }),
+    ipcRenderer.invoke('calculate-next-maintenance-date', { lastMaintenanceDate: lastDate, frequency }),
   
   // ============================================================
   // WhatsApp

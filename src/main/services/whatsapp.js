@@ -1,6 +1,5 @@
 // Servicio de WhatsApp integrado
 const { Client } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const electron = require('electron');
@@ -93,9 +92,7 @@ function initializeWhatsAppClient() {
     whatsappClient.on('qr', (qr) => {
       console.log('==== CÓDIGO QR GENERADO ====');
       console.log(`Longitud del QR: ${qr.length} caracteres`);
-      
-      // Generar QR en la terminal como respaldo
-      qrcode.generate(qr, { small: true });
+      console.log('============================');
       
       // Verificar que la ventana principal existe antes de enviar
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
@@ -233,91 +230,6 @@ function setupWhatsAppIpcHandlers() {
       return {
         success: false,
         message: `Error al cerrar sesión: ${error.message}`
-      };
-    }
-  });
-  
-  // Enviar mensaje de WhatsApp
-  ipcMain.handle('send-whatsapp-message', async (event, data) => {
-    try {
-      // Si es una acción de conexión, inicializar/reiniciar cliente
-      if (data.action === 'connect') {
-        // Si ya hay una inicialización en progreso, no hacer nada
-        if (initializationInProgress) {
-          return { 
-            success: true, 
-            message: 'Inicialización ya en progreso' 
-          };
-        }
-        
-        // Reiniciar cliente
-        initializeWhatsAppClient();
-        
-        return { 
-          success: true, 
-          message: 'Iniciando conexión con WhatsApp...' 
-        };
-      }
-      
-      // Verificar si el cliente está listo para mensajes
-      if (!isWhatsAppReady || !whatsappClient) {
-        return {
-          success: false,
-          message: 'WhatsApp no está conectado. Por favor inicia sesión primero.'
-        };
-      }
-      
-      // Enviar mensaje
-      const { phone, message } = data;
-      
-      if (!phone || !message) {
-        return {
-          success: false,
-          message: 'Teléfono y mensaje son requeridos'
-        };
-      }
-      
-      // Formatear el número según el formato requerido por WhatsApp Web
-      let formattedNumber = phone;
-      
-      // Eliminar cualquier carácter que no sea número
-      formattedNumber = formattedNumber.replace(/\D/g, '');
-      
-      // Verificar que tenga código de país
-      if (!formattedNumber.startsWith('+')) {
-        if (formattedNumber.startsWith('0')) {
-          formattedNumber = formattedNumber.substring(1);
-        }
-        
-        // Asumir código de país (ej: +56 para Chile)
-        if (!formattedNumber.startsWith('56')) {
-          formattedNumber = '56' + formattedNumber;
-        }
-      }
-      
-      // Enviar mensaje
-      const chatId = `${formattedNumber}@c.us`;
-      
-      try {
-        const response = await whatsappClient.sendMessage(chatId, message);
-        
-        return {
-          success: true,
-          message: 'Mensaje enviado con éxito',
-          data: response
-        };
-      } catch (error) {
-        console.error('Error al enviar mensaje WhatsApp:', error);
-        return {
-          success: false,
-          message: `Error al enviar mensaje: ${error.message}`
-        };
-      }
-    } catch (error) {
-      console.error('Error en servicio WhatsApp:', error);
-      return {
-        success: false,
-        message: `Error en servicio WhatsApp: ${error.message}`
       };
     }
   });

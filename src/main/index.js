@@ -2,16 +2,27 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { setupStore } = require('./db/store');
 const AuthService = require('./services/auth'); // Servicio de autenticación local
-const { setupWhatsAppService } = require('./services/whatsapp'); // Servicio de WhatsApp
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 // Cargar variables de entorno
 require('dotenv').config();
+
+// Importar servicios de WhatsApp directamente
+const { 
+  setupWhatsAppService, 
+  sendWhatsAppMessage, 
+  isWhatsAppConnected, 
+  logoutWhatsApp 
+} = require('./services/whatsapp');
 
 // Variable para la ventana principal
 let mainWindow;
 
 // Variables para servicios
 let authService;
+
+// Variable para controlar los handlers IPC
+let ipcHandlersRegistered = false;
 
 // Función para crear la ventana principal
 function createWindow() {
@@ -66,7 +77,7 @@ app.whenReady().then(async () => {
   }
   
   // Configurar manejadores IPC
-  setupHandlers(store);
+  setupIpcHandlers(store);
 });
 
 // Salir cuando todas las ventanas estén cerradas (excepto en macOS)
@@ -80,96 +91,29 @@ app.on('window-all-closed', () => {
 });
 
 // Configurar manejadores IPC
-function setupHandlers(store) {
-  // Verificar si los handlers ya están configurados para evitar duplicación
-  if (global.handlersConfigured) {
-    console.log('Los manejadores IPC ya están configurados, saltando...');
+function setupIpcHandlers(store) {
+  // Evitar registrar los manejadores más de una vez
+  if (ipcHandlersRegistered) {
+    console.log('Los manejadores IPC ya están registrados, omitiendo...');
     return;
   }
   
-  // ============================================================
-  // Manejadores para WhatsApp
-  // ============================================================
+  // Intentar desregistrar los handlers existentes para evitar duplicación
+  try {
+    ipcMain.removeHandler('login');
+    ipcMain.removeHandler('logout');
+    ipcMain.removeHandler('check-auth');
+    ipcMain.removeHandler('get-user-info');
+    ipcMain.removeHandler('send-whatsapp-message');
+    ipcMain.removeHandler('is-whatsapp-connected');
+    ipcMain.removeHandler('logout-whatsapp');
+    // Añade aquí otros manejadores que puedas tener
+  } catch (error) {
+    console.warn('No hay handlers anteriores para remover, continuando...');
+  }
   
-  // Enviar mensaje de WhatsApp
-  ipcMain.handle('send-whatsapp-message', async (event, data) => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
-    
-    try {
-      // Si es una acción de conexión, iniciar el proceso de autenticación de WhatsApp
-      if (data.action === 'connect') {
-        // Esta acción inicia el proceso de autenticación de WhatsApp
-        if (mainWindow) {
-          mainWindow.webContents.send('show-alert', {
-            type: 'info',
-            message: 'Iniciando conexión con WhatsApp...'
-          });
-        }
-        return { success: true, message: 'Iniciando conexión con WhatsApp' };
-      }
-      
-      // Para enviar un mensaje, usamos la función del servicio
-      const result = await sendWhatsAppMessage(data.phone, data.message);
-      return result;
-    } catch (error) {
-      console.error('Error al procesar solicitud de WhatsApp:', error);
-      return { 
-        success: false, 
-        message: `Error en WhatsApp: ${error.message}` 
-      };
-    }
-  });
-  
-  // Verificar si WhatsApp está conectado
-  ipcMain.handle('is-whatsapp-connected', () => {
-    return isWhatsAppReady; // Esta variable debería estar definida en tu servicio de WhatsApp
-  });
-  
-  // Cerrar sesión de WhatsApp
-  ipcMain.handle('logout-whatsapp', async () => {
-    try {
-      if (!whatsappClient) {
-        return {
-          success: false,
-          message: 'No hay sesión activa de WhatsApp'
-        };
-      }
-      
-      await whatsappClient.logout();
-      
-      // Eliminar archivo de sesión si existe
-      if (sessionDataPath && fs.existsSync(sessionDataPath)) {
-        fs.unlinkSync(sessionDataPath);
-      }
-      
-      isWhatsAppReady = false;
-      
-      if (mainWindow) {
-        mainWindow.webContents.send('whatsapp-disconnected');
-        mainWindow.webContents.send('show-alert', {
-          type: 'info',
-          message: 'Sesión de WhatsApp cerrada correctamente'
-        });
-      }
-      
-      return {
-        success: true,
-        message: 'Sesión de WhatsApp cerrada correctamente'
-      };
-    } catch (error) {
-      console.error('Error al cerrar sesión de WhatsApp:', error);
-      return {
-        success: false,
-        message: `Error al cerrar sesión: ${error.message}`
-      };
-    }
-  });
-
   // ============================================================
-  // Autenticación
+  // Manejadores para Autenticación
   // ============================================================
   
   ipcMain.handle('login', async (event, credentials) => {
@@ -225,7 +169,63 @@ function setupHandlers(store) {
     return authService.changePassword(currentUser.id, currentPassword, newPassword);
   });
   
+  // ============================================================
+  // Manejadores para WhatsApp
+  // ============================================================
+  
+  ipcMain.handle('send-whatsapp-message', async (event, data) => {
+    // Verificar autenticación
+    if (!authService.checkAuth().isAuthenticated) {
+      return { success: false, message: 'No autenticado' };
+    }
+    
+    try {
+      // Si es una acción de conexión, iniciar el proceso de autenticación de WhatsApp
+      if (data.action === 'connect') {
+        // Esta acción inicia el proceso de autenticación de WhatsApp
+        if (mainWindow) {
+          mainWindow.webContents.send('show-alert', {
+            type: 'info',
+            message: 'Iniciando conexión con WhatsApp...'
+          });
+        }
+        return { success: true, message: 'Iniciando conexión con WhatsApp' };
+      }
+      
+      // Para enviar un mensaje, usamos la función del servicio
+      const result = await sendWhatsAppMessage(data.phone, data.message);
+      return result;
+    } catch (error) {
+      console.error('Error al procesar solicitud de WhatsApp:', error);
+      return { 
+        success: false, 
+        message: `Error en WhatsApp: ${error.message}` 
+      };
+    }
+  });
+  
+  // Verificar si WhatsApp está conectado
+  ipcMain.handle('is-whatsapp-connected', () => {
+    return isWhatsAppConnected();
+  });
+  
+  // Cerrar sesión de WhatsApp
+  ipcMain.handle('logout-whatsapp', async () => {
+    try {
+      return await logoutWhatsApp();
+    } catch (error) {
+      console.error('Error al cerrar sesión de WhatsApp:', error);
+      return {
+        success: false,
+        message: `Error al cerrar sesión: ${error.message}`
+      };
+    }
+  });
+
+  // ============================================================
   // Administración de usuarios (solo para admins)
+  // ============================================================
+  
   ipcMain.handle('list-users', () => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
@@ -464,7 +464,10 @@ function setupHandlers(store) {
           
           // Notificar si el mantenimiento está dentro del umbral de días
           if (diffDays <= 30 && diffDays >= -30) { // Incluimos mantenimientos vencidos hasta 30 días
-            const client = clients.find(c => c.id === installation.clientId);
+            const client = clients.find(c => c.id === installation.clientId) || { 
+              name: 'Cliente desconocido',
+              id: installation.clientId
+            };
             
             upcomingMaintenance.push({
               clientId: installation.clientId,
@@ -622,8 +625,8 @@ function setupHandlers(store) {
       return null;
     }
   });
-  
-  global.handlersConfigured = true;
 
-  // Los manejadores para sincronización son gestionados en sync-integration.js
+  // Marcar que los handlers han sido registrados
+  ipcHandlersRegistered = true;
+  console.log('Todos los manejadores IPC registrados correctamente');
 }
