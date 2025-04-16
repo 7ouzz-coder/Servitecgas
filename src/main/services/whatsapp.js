@@ -1,4 +1,3 @@
-// Servicio de WhatsApp integrado
 const { Client } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +10,10 @@ let isWhatsAppReady = false;
 let sessionDataPath = null;
 let mainWindowRef = null;
 let initializationInProgress = false;
-let autoInitOnStartup = false; // Flag para controlar la inicialización automática
+let autoInitOnStartup = true; // Cambiado a true para iniciar automáticamente
+let reconnectAttempts = 0;
+let maxReconnectAttempts = 3;
+let reconnectInterval = null;
 
 /**
  * Configura el servicio de WhatsApp
@@ -35,17 +37,20 @@ function setupWhatsAppService(mainWindow) {
   // Configurar manejadores IPC
   setupWhatsAppIpcHandlers();
   
-  // Verificar si existe una sesión guardada, pero no inicializar automáticamente
+  // Verificar si existe una sesión guardada e iniciar automáticamente
   if (fs.existsSync(sessionDataPath) && autoInitOnStartup) {
     console.log('Sesión de WhatsApp encontrada, iniciando automáticamente...');
-    initializeWhatsAppClient();
+    // Esperar un poco para que la aplicación termine de cargar
+    setTimeout(() => {
+      initializeWhatsAppClient();
+    }, 3000);
   } else {
     console.log('No se inicia WhatsApp automáticamente. El usuario deberá conectarse manualmente.');
   }
 }
 
 /**
- * Inicializa el cliente de WhatsApp
+ * Inicializa el cliente de WhatsApp con manejo mejorado de sesión y reconexión
  */
 function initializeWhatsAppClient() {
   if (initializationInProgress) {
@@ -122,7 +127,9 @@ function initializeWhatsAppClient() {
     
     // Inicializar el cliente de WhatsApp con sesión si existe
     const clientOptions = {
-      puppeteer: puppeteerOpts
+      puppeteer: puppeteerOpts,
+      restartOnAuthFail: true,
+      qrMaxRetries: 3
     };
     
     if (sessionData) {
@@ -140,6 +147,9 @@ function initializeWhatsAppClient() {
       console.log('==== CÓDIGO QR GENERADO ====');
       console.log(`Longitud del QR: ${qr.length} caracteres`);
       console.log('============================');
+      
+      // Reiniciar contador de reintentos cuando se muestra un QR
+      reconnectAttempts = 0;
       
       // Verificar que la ventana principal existe antes de enviar
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
@@ -167,6 +177,13 @@ function initializeWhatsAppClient() {
       console.log('Cliente WhatsApp listo');
       isWhatsAppReady = true;
       initializationInProgress = false;
+      reconnectAttempts = 0;
+      
+      // Limpiar intervalo de reconexión si existe
+      if (reconnectInterval) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+      }
       
       // Guardar la sesión cuando esté lista
       if (whatsappClient && whatsappClient.session && sessionDataPath) {
@@ -228,6 +245,9 @@ function initializeWhatsAppClient() {
           message: 'WhatsApp se ha desconectado'
         });
       }
+      
+      // Intentar reconexión automática
+      handleSessionReconnection();
     });
     
     // Agregar más eventos para mejor depuración
@@ -282,6 +302,65 @@ function initializeWhatsAppClient() {
       });
     }
   }
+}
+
+/**
+ * Maneja la reconexión automática después de una desconexión
+ */
+function handleSessionReconnection() {
+  // Si no hay una sesión guardada, no intentar reconectar
+  if (!fs.existsSync(sessionDataPath)) {
+    console.log('No hay sesión guardada para intentar reconexión');
+    return;
+  }
+  
+  // Si ya hay un proceso de reconexión en marcha, no iniciar otro
+  if (reconnectInterval) {
+    console.log('Ya hay un proceso de reconexión en marcha');
+    return;
+  }
+  
+  console.log('Iniciando proceso de reconexión automática');
+  
+  // Reiniciar contador de intentos
+  reconnectAttempts = 0;
+  
+  // Configurar intervalo para intentos de reconexión
+  reconnectInterval = setInterval(() => {
+    // Si la reconexión ya fue exitosa o se alcanzó el límite de intentos
+    if (isWhatsAppReady || reconnectAttempts >= maxReconnectAttempts) {
+      console.log(`Deteniendo intentos de reconexión: ${isWhatsAppReady ? 'Conectado' : 'Máximo de intentos alcanzado'}`);
+      clearInterval(reconnectInterval);
+      reconnectInterval = null;
+      
+      // Si se alcanzó el máximo de intentos, notificar al usuario
+      if (!isWhatsAppReady && reconnectAttempts >= maxReconnectAttempts) {
+        if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+          mainWindowRef.webContents.send('show-alert', {
+            type: 'warning',
+            message: 'No se pudo reconectar automáticamente a WhatsApp. Es posible que necesites escanear el código QR nuevamente.'
+          });
+        }
+      }
+      
+      return;
+    }
+    
+    // Incrementar contador de intentos
+    reconnectAttempts++;
+    console.log(`Intento de reconexión ${reconnectAttempts}/${maxReconnectAttempts}`);
+    
+    // Intentar inicializar cliente
+    if (!initializationInProgress) {
+      try {
+        initializeWhatsAppClient();
+      } catch (error) {
+        console.error('Error al intentar reconexión:', error);
+      }
+    } else {
+      console.log('Inicialización ya en progreso, esperando...');
+    }
+  }, 30000); // Intentar cada 30 segundos
 }
 
 /**
@@ -458,7 +537,7 @@ function setupWhatsAppIpcHandlers() {
 }
 
 /**
- * Envía un mensaje de WhatsApp (función para uso interno)
+ * Envía un mensaje de WhatsApp con mejor manejo de errores
  * @param {string} to - Número de teléfono del destinatario (con código de país)
  * @param {string} message - Mensaje a enviar
  * @returns {Promise<Object>} - Resultado del envío
@@ -504,6 +583,9 @@ async function sendWhatsAppMessage(to, message) {
     const response = await whatsappClient.sendMessage(chatId, message);
     console.log('Mensaje enviado exitosamente');
     
+    // Registrar el mensaje enviado en un historial local
+    saveMessageToHistory(to, message);
+    
     return {
       success: true,
       message: 'Mensaje enviado con éxito',
@@ -519,6 +601,72 @@ async function sendWhatsAppMessage(to, message) {
       success: false,
       message: `Error al enviar mensaje: ${error.message || 'Error desconocido'}`
     };
+  }
+}
+
+/**
+ * Guarda un mensaje enviado en el historial local
+ * @param {string} recipient - Número del destinatario
+ * @param {string} messageText - Texto del mensaje
+ */
+function saveMessageToHistory(recipient, messageText) {
+  try {
+    // Ruta al archivo de historial
+    const userDataPath = electron.app.getPath('userData');
+    const historyPath = path.join(userDataPath, 'message-history.json');
+    
+    // Cargar historial existente o crear uno nuevo
+    let history = [];
+    if (fs.existsSync(historyPath)) {
+      try {
+        const historyData = fs.readFileSync(historyPath, 'utf8');
+        history = JSON.parse(historyData);
+      } catch (parseError) {
+        console.error('Error al parsear historial de mensajes:', parseError);
+        // Continuar con un historial vacío si hay error
+      }
+    }
+    
+    // Añadir nuevo mensaje al historial
+    history.push({
+      id: Date.now().toString(),
+      recipient: recipient,
+      message: messageText,
+      timestamp: new Date().toISOString(),
+      status: 'sent'
+    });
+    
+    // Limitar el historial a 500 mensajes para evitar archivos muy grandes
+    if (history.length > 500) {
+      history = history.slice(-500);
+    }
+    
+    // Guardar historial actualizado
+    fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Error al guardar mensaje en historial:', error);
+    // No bloqueamos el flujo principal si hay error
+  }
+}
+
+/**
+ * Carga el historial de mensajes enviados
+ * @returns {Array} - Historial de mensajes
+ */
+function getMessageHistory() {
+  try {
+    const userDataPath = electron.app.getPath('userData');
+    const historyPath = path.join(userDataPath, 'message-history.json');
+    
+    if (!fs.existsSync(historyPath)) {
+      return [];
+    }
+    
+    const historyData = fs.readFileSync(historyPath, 'utf8');
+    return JSON.parse(historyData);
+  } catch (error) {
+    console.error('Error al cargar historial de mensajes:', error);
+    return [];
   }
 }
 
@@ -570,5 +718,6 @@ module.exports = {
   sendWhatsAppMessage,
   isWhatsAppConnected,
   logoutWhatsApp,
-  initializeWhatsAppClient // Exportamos esta función para que pueda ser llamada explícitamente
+  initializeWhatsAppClient,
+  getMessageHistory
 };

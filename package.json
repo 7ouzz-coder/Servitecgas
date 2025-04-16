@@ -29,6 +29,7 @@
         "csv-stringify": "^6.4.0",
         "dotenv": "^16.3.1",
         "electron-store": "^8.2.0",
+        "electron-updater": "^6.6.2",
         "exceljs": "^4.3.0",
         "jwt-decode": "^4.0.0",
         "moment": "^2.30.1",
@@ -36,10 +37,10 @@
         "pdfkit": "^0.13.0",
         "qrcode": "^1.5.4",
         "qrcode-terminal": "^0.12.0",
-        "uuid": "^9.0.1",
-        "whatsapp-web.js": "^1.27.0",
         "react": "^17.0.2",
-        "react-dom": "^17.0.2"
+        "react-dom": "^17.0.2",
+        "uuid": "^9.0.1",
+        "whatsapp-web.js": "^1.27.0"
     },
     "build": {
         "appId": "com.servitecgas.app",
@@ -55,7 +56,12 @@
         "extraResources": [
             "assets/**"
         ],
-        "publish": null,
+        "publish": [
+            {
+              "provider": "generic",
+              "url": "https://tualmacenamientoazure.blob.core.windows.net/actualizaciones"
+            } 
+        ],
         "mac": {
             "category": "public.app-category.business",
             "target": [

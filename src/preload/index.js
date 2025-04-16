@@ -70,6 +70,26 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('whatsapp-initialization-failed', (event, data) => callback(data));
   },
   
+  // Eventos para respaldos
+  onBackupCreated: (callback) => {
+    ipcRenderer.on('backup-created', (event, data) => callback(data));
+  },
+  
+  // Eventos para actualizaciones
+  onUpdateAvailable: (callback) => {
+    ipcRenderer.on('update-available', (event, data) => callback(data));
+  },
+  
+  // Estado de conexión
+  onConnectionStatusChanged: (callback) => {
+    // Escuchar cambios de conexión online/offline
+    window.addEventListener('online', () => callback({ isOnline: true }));
+    window.addEventListener('offline', () => callback({ isOnline: false }));
+    
+    // Notificar estado inicial
+    callback({ isOnline: navigator.onLine });
+  },
+  
   // Eliminar listeners (para limpieza)
   removeListener: (channel, listener) => {
     ipcRenderer.removeListener(channel, listener);
@@ -165,10 +185,25 @@ contextBridge.exposeInMainWorld('api', {
   sendWhatsAppMessage: (messageData) => ipcRenderer.invoke('send-whatsapp-message', messageData),
   isWhatsAppConnected: () => ipcRenderer.invoke('is-whatsapp-connected'),
   logoutWhatsApp: () => ipcRenderer.invoke('logout-whatsapp'),
+  getWhatsAppMessageHistory: () => ipcRenderer.invoke('get-whatsapp-message-history'),
   
   // Nuevas funciones para WhatsApp
   initializeWhatsApp: () => ipcRenderer.invoke('initialize-whatsapp'),
   getWhatsAppChats: () => ipcRenderer.invoke('get-whatsapp-chats'),
+  
+  // ============================================================
+  // Respaldos y Restauración
+  // ============================================================
+  
+  createBackup: () => ipcRenderer.invoke('create-backup'),
+  getBackupList: () => ipcRenderer.invoke('get-backup-list'),
+  restoreBackup: (backupPath) => ipcRenderer.invoke('restore-backup', backupPath),
+  
+  // ============================================================
+  // Actualizaciones
+  // ============================================================
+  
+  checkUpdates: () => ipcRenderer.invoke('check-updates'),
   
   // ============================================================
   // Utilidades

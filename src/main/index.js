@@ -7,13 +7,24 @@ const { v4: uuidv4 } = require('uuid');
 // Cargar variables de entorno
 require('dotenv').config();
 
-// Importar servicios de WhatsApp directamente
+// Importar servicios
 const { 
   setupWhatsAppService, 
   sendWhatsAppMessage, 
   isWhatsAppConnected, 
-  logoutWhatsApp 
+  logoutWhatsApp,
+  getMessageHistory
 } = require('./services/whatsapp');
+
+const { 
+  setupAutomaticBackup, 
+  createBackup, 
+  getBackupList, 
+  restoreBackup,
+  createManualBackup
+} = require('./services/backup');
+
+const { initUpdateSystem } = require('./update-system');
 
 // Variable para la ventana principal
 let mainWindow;
@@ -27,17 +38,27 @@ let ipcHandlersRegistered = false;
 // Función para crear la ventana principal
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1200,
+    width: 1280,
     height: 800,
+    minWidth: 1024,
+    minHeight: 700,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false
-    }
+    },
+    icon: path.join(__dirname, '../../assets/logo.png'),
+    show: false // No mostrar hasta que esté listo
   });
 
   // Cargar la pantalla de login
   mainWindow.loadFile(path.join(__dirname, '../renderer/login.html'));
+
+  // Mostrar cuando esté listo para evitar parpadeos
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    mainWindow.focus();
+  });
 
   // En modo de desarrollo, abrir DevTools
   if (process.env.NODE_ENV === 'development') {
@@ -66,6 +87,12 @@ app.whenReady().then(async () => {
   
   // Configurar servicio de WhatsApp
   setupWhatsAppService(mainWindow);
+  
+  // Configurar sistema de respaldos automáticos
+  setupAutomaticBackup(mainWindow);
+  
+  // Inicializar sistema de actualizaciones
+  initUpdateSystem(mainWindow);
   
   // Configurar sincronización con Azure
   const { setupSync } = require('./sync-integration');
@@ -218,6 +245,158 @@ function setupIpcHandlers(store) {
       return {
         success: false,
         message: `Error al cerrar sesión: ${error.message}`
+      };
+    }
+  });
+  
+  // Obtener historial de mensajes
+  ipcMain.handle('get-whatsapp-message-history', () => {
+    try {
+      return getMessageHistory();
+    } catch (error) {
+      console.error('Error al obtener historial de mensajes:', error);
+      return [];
+    }
+  });
+
+  // ============================================================
+  // Manejadores para Respaldos y Restauración
+  // ============================================================
+  
+  // Crear respaldo manual
+  ipcMain.handle('create-backup', async () => {
+    try {
+      // Pedir ruta al usuario
+      const { filePath, canceled } = await dialog.showSaveDialog({
+        title: 'Guardar respaldo',
+        defaultPath: path.join(app.getPath('documents'), `servitecgas-backup-${new Date().toISOString().split('T')[0]}.json`),
+        filters: [
+          { name: 'Archivos JSON', extensions: ['json'] }
+        ],
+        properties: ['createDirectory']
+      });
+      
+      if (canceled || !filePath) {
+        return { success: false, message: 'Operación cancelada' };
+      }
+      
+      // Crear respaldo
+      const result = await createManualBackup(filePath);
+      
+      return {
+        success: true,
+        path: result.path,
+        message: 'Respaldo creado correctamente'
+      };
+    } catch (error) {
+      console.error('Error al crear respaldo manual:', error);
+      return {
+        success: false,
+        message: `Error al crear respaldo: ${error.message}`
+      };
+    }
+  });
+  
+  // Obtener lista de respaldos
+  ipcMain.handle('get-backup-list', async () => {
+    try {
+      return await getBackupList();
+    } catch (error) {
+      console.error('Error al obtener lista de respaldos:', error);
+      return [];
+    }
+  });
+  
+  // Restaurar respaldo
+  ipcMain.handle('restore-backup', async (event, backupPath) => {
+    try {
+      // Si no se proporcionó una ruta, pedir al usuario
+      if (!backupPath) {
+        const { filePaths, canceled } = await dialog.showOpenDialog({
+          title: 'Seleccionar respaldo para restaurar',
+          filters: [
+            { name: 'Archivos JSON', extensions: ['json'] }
+          ],
+          properties: ['openFile']
+        });
+        
+        if (canceled || filePaths.length === 0) {
+          return { success: false, message: 'Operación cancelada' };
+        }
+        
+        backupPath = filePaths[0];
+      }
+      
+      // Confirmar restauración
+      const { response } = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Restaurar respaldo',
+        message: '¿Estás seguro de restaurar este respaldo?',
+        detail: 'Esta acción reemplazará todos los datos actuales. Se creará un respaldo de seguridad antes de restaurar.',
+        buttons: ['Restaurar', 'Cancelar'],
+        cancelId: 1
+      });
+      
+      if (response === 1) {
+        return { success: false, message: 'Operación cancelada' };
+      }
+      
+      // Restaurar respaldo
+      const result = await restoreBackup(backupPath);
+      
+      // Notificar a la interfaz
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('database-imported');
+      }
+      
+      return {
+        success: true,
+        ...result,
+        message: 'Respaldo restaurado correctamente'
+      };
+    } catch (error) {
+      console.error('Error al restaurar respaldo:', error);
+      return {
+        success: false,
+        message: `Error al restaurar respaldo: ${error.message}`
+      };
+    }
+  });
+  
+  // ============================================================
+  // Manejadores para Actualizaciones
+  // ============================================================
+  
+  // Verificar actualizaciones manualmente
+  ipcMain.handle('check-updates', async () => {
+    try {
+      // Importar función directamente para mantener el código limpio
+      const { checkForUpdates, getLatestUpdateInfo } = require('./update-system');
+      
+      // Verificar actualizaciones
+      await checkForUpdates(mainWindow);
+      
+      // Obtener información de la última actualización
+      const updateInfo = getLatestUpdateInfo();
+      
+      if (!updateInfo) {
+        return {
+          success: false,
+          message: 'No se pudo obtener información de actualizaciones'
+        };
+      }
+      
+      return {
+        success: true,
+        updateInfo,
+        hasUpdate: updateInfo.version > app.getVersion(),
+        currentVersion: app.getVersion()
+      };
+    } catch (error) {
+      console.error('Error al verificar actualizaciones:', error);
+      return {
+        success: false,
+        message: `Error al verificar actualizaciones: ${error.message}`
       };
     }
   });
@@ -656,6 +835,118 @@ function setupIpcHandlers(store) {
     } catch (error) {
       console.error('Error al calcular próxima fecha de mantenimiento:', error);
       return null;
+    }
+  });
+  
+  // ============================================================
+  // Exportar/Importar Base de Datos
+  // ============================================================
+  
+  // Exportar base de datos
+  ipcMain.handle('export-database', async () => {
+    try {
+      const { filePath, canceled } = await dialog.showSaveDialog({
+        title: 'Exportar base de datos',
+        defaultPath: path.join(app.getPath('documents'), `servitecgas-data-${new Date().toISOString().split('T')[0]}.json`),
+        filters: [
+          { name: 'Archivos JSON', extensions: ['json'] }
+        ]
+      });
+      
+      if (canceled || !filePath) {
+        return { success: false, message: 'Operación cancelada por el usuario' };
+      }
+      
+      // Obtener datos para el respaldo
+      const clients = store.get('clients') || [];
+      const installations = store.get('installations') || [];
+      const maintenanceHistory = store.get('maintenanceHistory') || [];
+      
+      // Crear objeto de respaldo
+      const backupData = {
+        version: app.getVersion(),
+        timestamp: new Date().toISOString(),
+        data: {
+          clients,
+          installations,
+          maintenanceHistory
+        }
+      };
+      
+      // Guardar archivo
+      fs.writeFileSync(filePath, JSON.stringify(backupData, null, 2));
+      
+      return {
+        success: true,
+        message: 'Base de datos exportada correctamente',
+        filePath
+      };
+    } catch (error) {
+      console.error('Error al exportar base de datos:', error);
+      return {
+        success: false,
+        message: `Error al exportar base de datos: ${error.message}`
+      };
+    }
+  });
+  
+  // Importar base de datos
+  ipcMain.handle('import-database', async () => {
+    try {
+      // Mostrar diálogo para seleccionar archivo
+      const { filePaths, canceled } = await dialog.showOpenDialog({
+        title: 'Importar base de datos',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Archivos JSON', extensions: ['json'] }
+        ]
+      });
+      
+      if (canceled || filePaths.length === 0) {
+        return { success: false, message: 'Operación cancelada por el usuario' };
+      }
+      
+      // Crear respaldo de seguridad antes de importar
+      await createBackup(mainWindow);
+      
+      // Leer archivo
+      const fileContent = fs.readFileSync(filePaths[0], 'utf8');
+      const backupData = JSON.parse(fileContent);
+      
+      // Verificar estructura
+      if (!backupData.data || !backupData.data.clients || !backupData.data.installations) {
+        return { success: false, message: 'El archivo no tiene un formato válido' };
+      }
+      
+      // Importar datos
+      store.set('clients', backupData.data.clients);
+      store.set('installations', backupData.data.installations);
+      
+      // Si hay historial de mantenimiento, importarlo
+      if (backupData.data.maintenanceHistory) {
+        store.set('maintenanceHistory', backupData.data.maintenanceHistory);
+      }
+      
+      // Notificar a la interfaz
+      if (mainWindow) {
+        mainWindow.webContents.send('database-imported');
+      }
+      
+      return {
+        success: true,
+        message: 'Base de datos importada correctamente',
+        stats: {
+          clients: backupData.data.clients.length,
+          installations: backupData.data.installations.length,
+          maintenanceHistory: backupData.data.maintenanceHistory?.length || 0
+        }
+      };
+    } catch (error) {
+      console.error('Error al importar base de datos:', error);
+      return {
+        success: false,
+        message: `Error al importar base de datos: ${error.message}`
+      };
     }
   });
 
