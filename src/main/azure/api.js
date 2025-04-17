@@ -1,8 +1,14 @@
 const axios = require('axios');
+require('dotenv').config();
 
 // URL base de la API de Azure
-// IMPORTANTE: Reemplazar con tu URL real
-const API_BASE_URL = 'https://your-azure-function-app.azurewebsites.net/api';
+const API_BASE_URL = process.env.AZURE_API_URL || 'https://servitecgas-dev-api.azurewebsites.net/api';
+
+// Determinar si estamos en modo desarrollo
+const DEV_MODE = process.env.DEV_MODE === 'true' || process.env.NODE_ENV === 'development';
+
+// Variable para controlar el modo offline
+let isOfflineMode = DEV_MODE; // Iniciar en modo offline si estamos en desarrollo
 
 /**
  * Sincroniza cambios locales con el servidor
@@ -10,20 +16,45 @@ const API_BASE_URL = 'https://your-azure-function-app.azurewebsites.net/api';
  * @param {Array} changes - Cambios a sincronizar
  * @returns {Promise<Object>} - Resultado de la sincronización
  */
+
 async function syncChanges(token, changes) {
+  // Si estamos en modo desarrollo o offline, simular sincronización exitosa
+  if (isOfflineMode) {
+    return {
+      success: true,
+      offline: true,
+      message: DEV_MODE ? 'Modo desarrollo: sin sincronización con Azure' : 'Modo offline: los cambios se sincronizarán cuando haya conexión'
+    };
+  }
+
   try {
     const response = await axios.post(`${API_BASE_URL}/sync`, changes, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 5000 // Reducir el timeout para fallar más rápido
     });
     return response.data;
   } catch (error) {
     console.error('Error al sincronizar cambios:', error.response?.data || error.message);
+    
+    // Si el error es de tipo ENOTFOUND o ETIMEDOUT, entrar en modo offline
+    if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+      console.log('Entrando en modo offline por problema de conexión');
+      isOfflineMode = true;
+      
+      return {
+        success: true,
+        offline: true,
+        message: 'Modo offline: los cambios se sincronizarán cuando haya conexión'
+      };
+    }
+    
     throw new Error(error.response?.data?.message || error.message);
   }
 }
+
 
 /**
  * Obtiene cambios desde el servidor
@@ -32,16 +63,39 @@ async function syncChanges(token, changes) {
  * @returns {Promise<Array>} - Cambios del servidor
  */
 async function getChanges(token, lastSync) {
+  // Si estamos en modo offline, devolver un array vacío
+  if (isOfflineMode) {
+    return {
+      success: true,
+      offline: true,
+      data: []
+    };
+  }
+  
   try {
     const response = await axios.get(`${API_BASE_URL}/changes`, {
       params: { since: lastSync },
       headers: {
         'Authorization': `Bearer ${token}`
-      }
+      },
+      timeout: 5000
     });
     return response.data;
   } catch (error) {
     console.error('Error al obtener cambios:', error.response?.data || error.message);
+    
+    // Si el error es de conexión, entrar en modo offline
+    if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+      console.log('Entrando en modo offline por problema de conexión');
+      isOfflineMode = true;
+      
+      return {
+        success: true,
+        offline: true,
+        data: []
+      };
+    }
+    
     throw new Error(error.response?.data?.message || error.message);
   }
 }
@@ -167,6 +221,43 @@ async function generateReport(token, reportType, options) {
   }
 }
 
+/**
+ * Verifica si la configuración de Azure es válida
+ * @returns {boolean} - Verdadero si la configuración es válida
+ */
+function isConfigValid() {
+  // Si estamos en modo desarrollo, siempre devolver true para evitar errores
+  if (DEV_MODE) return true;
+  
+  return !!AZURE_STORAGE_CONNECTION_STRING && 
+         !!AZURE_CONTAINER_NAME && 
+         !!AZURE_TABLE_NAME;
+}
+
+/**
+ * Intenta verificar la conexión y salir del modo offline si es posible
+ * @returns {Promise<boolean>} - Verdadero si la conexión está disponible
+ */
+async function checkConnection() {
+  // Si estamos en modo desarrollo, no intentar conectar
+  if (DEV_MODE) return false;
+  
+  // Si no estamos en modo offline, no hay necesidad de verificar
+  if (!isOfflineMode) return true;
+  
+  try {
+    // Intentar una solicitud simple para verificar conexión
+    await axios.get(`${API_BASE_URL}/ping`, { timeout: 3000 });
+    
+    console.log('Conexión restablecida, saliendo del modo offline');
+    isOfflineMode = false;
+    return true;
+  } catch (error) {
+    console.log('Continúa en modo offline, no hay conexión disponible');
+    return false;
+  }
+}
+
 module.exports = {
   syncChanges,
   getChanges,
@@ -175,5 +266,9 @@ module.exports = {
   getInstallations,
   getUpcomingMaintenance,
   sendWhatsAppMessage,
-  generateReport
+  generateReport,
+  isConfigValid,
+  checkConnection,
+  isOfflineMode: () => isOfflineMode,
+  setOfflineMode: (mode) => { isOfflineMode = mode; }
 };

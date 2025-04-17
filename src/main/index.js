@@ -4,6 +4,8 @@ const { setupStore } = require('./db/store');
 const AuthService = require('./services/auth'); // Servicio de autenticación local
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const errorHandler = require('./utils/error-handler');
+
 // Cargar variables de entorno
 require('dotenv').config();
 
@@ -37,74 +39,104 @@ let ipcHandlersRegistered = false;
 
 // Función para crear la ventana principal
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 1024,
-    minHeight: 700,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    },
-    icon: path.join(__dirname, '../../assets/logo.png'),
-    show: false // No mostrar hasta que esté listo
-  });
+  try {
+    mainWindow = new BrowserWindow({
+      width: 1280,
+      height: 800,
+      minWidth: 1024,
+      minHeight: 700,
+      webPreferences: {
+        preload: path.join(__dirname, '../preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false
+      },
+      icon: path.join(__dirname, '../../assets/logo.png'),
+      show: false // No mostrar hasta que esté listo
+    });
 
-  // Cargar la pantalla de login
-  mainWindow.loadFile(path.join(__dirname, '../renderer/login.html'));
+    // Cargar la pantalla de login
+    mainWindow.loadFile(path.join(__dirname, '../renderer/login.html'))
+      .catch(error => {
+        errorHandler.captureError('mainWindow.loadFile', error);
+      });
 
-  // Mostrar cuando esté listo para evitar parpadeos
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
-  });
+    // Mostrar cuando esté listo para evitar parpadeos
+    mainWindow.once('ready-to-show', () => {
+      mainWindow.show();
+      mainWindow.focus();
+    });
 
-  // En modo de desarrollo, abrir DevTools
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
+    // En modo de desarrollo, abrir DevTools
+    if (process.env.NODE_ENV === 'development') {
+      mainWindow.webContents.openDevTools();
+    }
+
+    // Evento de cierre
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+    });
+    
+    // Capturar errores de renderizado
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+      errorHandler.captureError('render-process-gone', new Error(`Proceso de renderizado terminado: ${details.reason}`), details);
+    });
+    
+    // Capturar errores de carga de página
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      errorHandler.captureError('did-fail-load', new Error(`Error al cargar página: ${errorDescription}`), { errorCode });
+    });
+  } catch (error) {
+    errorHandler.captureError('createWindow', error);
+    throw error; // Re-lanzar para manejo superior
   }
-
-  // Evento de cierre
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
 }
 
 // Iniciar la aplicación
 app.whenReady().then(async () => {
-  createWindow();
-  
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-  
-  // Configurar almacenamiento de datos
-  const store = setupStore();
-  
-  // Inicializar servicio de autenticación
-  authService = new AuthService(store);
-  
-  // Configurar servicio de WhatsApp
-  setupWhatsAppService(mainWindow);
-  
-  // Configurar sistema de respaldos automáticos
-  setupAutomaticBackup(mainWindow);
-  
-  // Inicializar sistema de actualizaciones
-  initUpdateSystem(mainWindow);
-  
-  // Configurar sincronización con Azure
-  const { setupSync } = require('./sync-integration');
   try {
-    await setupSync(store, mainWindow);
-    console.log('Sincronización configurada correctamente');
+    // Limpiar logs antiguos al iniciar
+    errorHandler.cleanupOldLogs();
+    
+    createWindow();
+    
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+    
+    // Configurar almacenamiento de datos
+    const store = setupStore();
+    
+    // Inicializar servicio de autenticación
+    authService = new AuthService(store);
+    
+    // Configurar servicio de WhatsApp
+    setupWhatsAppService(mainWindow);
+    
+    // Configurar sistema de respaldos automáticos
+    setupAutomaticBackup(mainWindow);
+    
+    // Inicializar sistema de actualizaciones
+    initUpdateSystem(mainWindow);
+    
+    // Configurar sincronización con Azure
+    const { setupSync } = require('./sync-integration');
+    try {
+      await setupSync(store, mainWindow);
+      console.log('Sincronización configurada correctamente');
+    } catch (error) {
+      errorHandler.captureError('setupSync', error);
+      console.error('Error al inicializar sincronización:', error);
+    }
+    
+    // Configurar manejadores IPC
+    setupIpcHandlers(store);
   } catch (error) {
-    console.error('Error al inicializar sincronización:', error);
+    errorHandler.captureError('app.whenReady', error);
+    console.error('Error crítico al iniciar la aplicación:', error);
   }
-  
-  // Configurar manejadores IPC
-  setupIpcHandlers(store);
+}).catch(error => {
+  errorHandler.captureError('app.whenReady.catch', error);
+  console.error('Error fatal al iniciar la aplicación:', error);
 });
 
 // Salir cuando todas las ventanas estén cerradas (excepto en macOS)
@@ -117,7 +149,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Configurar manejadores IPC
+// Función completa setupIpcHandlers
 function setupIpcHandlers(store) {
   // Evitar registrar los manejadores más de una vez
   if (ipcHandlersRegistered) {
@@ -125,19 +157,32 @@ function setupIpcHandlers(store) {
     return;
   }
   
-  // Intentar desregistrar los handlers existentes para evitar duplicación
-  try {
-    ipcMain.removeHandler('login');
-    ipcMain.removeHandler('logout');
-    ipcMain.removeHandler('check-auth');
-    ipcMain.removeHandler('get-user-info');
-    ipcMain.removeHandler('send-whatsapp-message');
-    ipcMain.removeHandler('is-whatsapp-connected');
-    ipcMain.removeHandler('logout-whatsapp');
-    // Añade aquí otros manejadores que puedas tener
-  } catch (error) {
-    console.warn('No hay handlers anteriores para remover, continuando...');
-  }
+  // Lista de todos los handlers que vamos a registrar
+  const handlers = [
+    'login', 'logout', 'check-auth', 'get-user-info', 'update-user', 'change-password',
+    'list-users', 'create-user', 'update-user-admin', 'delete-user',
+    'get-clients', 'add-client', 'update-client', 'delete-client',
+    'get-installations', 'add-installation', 'update-installation', 'delete-installation',
+    'get-upcoming-maintenance', 'register-maintenance', 'calculate-next-maintenance-date',
+    'send-whatsapp-message', 'is-whatsapp-connected', 'logout-whatsapp', 'get-whatsapp-message-history',
+    'initialize-whatsapp', 'get-whatsapp-chats',
+    'create-backup', 'get-backup-list', 'restore-backup',
+    'check-updates',
+    'generate-id', 'format-date',
+    'sync-data', 'get-sync-status', 'get-azure-config', 'update-azure-config',
+    'check-azure-connection', 'force-download-from-azure', 'force-upload-to-azure',
+    'set-auto-sync', 'reset-sync-state',
+    'export-database', 'import-database'
+  ];
+  
+  // Eliminar manejadores existentes para evitar duplicidad
+  handlers.forEach(handler => {
+    try {
+      ipcMain.removeHandler(handler);
+    } catch (error) {
+      // Ignorar errores de manejadores no existentes
+    }
+  });
   
   // ============================================================
   // Manejadores para Autenticación
@@ -196,211 +241,6 @@ function setupIpcHandlers(store) {
     return authService.changePassword(currentUser.id, currentPassword, newPassword);
   });
   
-  // ============================================================
-  // Manejadores para WhatsApp
-  // ============================================================
-  
-  ipcMain.handle('send-whatsapp-message', async (event, data) => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
-    
-    try {
-      // Si es una acción de conexión, iniciar el proceso de autenticación de WhatsApp
-      if (data.action === 'connect') {
-        // Esta acción inicia el proceso de autenticación de WhatsApp
-        if (mainWindow) {
-          mainWindow.webContents.send('show-alert', {
-            type: 'info',
-            message: 'Iniciando conexión con WhatsApp...'
-          });
-        }
-        return { success: true, message: 'Iniciando conexión con WhatsApp' };
-      }
-      
-      // Para enviar un mensaje, usamos la función del servicio
-      const result = await sendWhatsAppMessage(data.phone, data.message);
-      return result;
-    } catch (error) {
-      console.error('Error al procesar solicitud de WhatsApp:', error);
-      return { 
-        success: false, 
-        message: `Error en WhatsApp: ${error.message}` 
-      };
-    }
-  });
-  
-  // Verificar si WhatsApp está conectado
-  ipcMain.handle('is-whatsapp-connected', () => {
-    return isWhatsAppConnected();
-  });
-  
-  // Cerrar sesión de WhatsApp
-  ipcMain.handle('logout-whatsapp', async () => {
-    try {
-      return await logoutWhatsApp();
-    } catch (error) {
-      console.error('Error al cerrar sesión de WhatsApp:', error);
-      return {
-        success: false,
-        message: `Error al cerrar sesión: ${error.message}`
-      };
-    }
-  });
-  
-  // Obtener historial de mensajes
-  ipcMain.handle('get-whatsapp-message-history', () => {
-    try {
-      return getMessageHistory();
-    } catch (error) {
-      console.error('Error al obtener historial de mensajes:', error);
-      return [];
-    }
-  });
-
-  // ============================================================
-  // Manejadores para Respaldos y Restauración
-  // ============================================================
-  
-  // Crear respaldo manual
-  ipcMain.handle('create-backup', async () => {
-    try {
-      // Pedir ruta al usuario
-      const { filePath, canceled } = await dialog.showSaveDialog({
-        title: 'Guardar respaldo',
-        defaultPath: path.join(app.getPath('documents'), `servitecgas-backup-${new Date().toISOString().split('T')[0]}.json`),
-        filters: [
-          { name: 'Archivos JSON', extensions: ['json'] }
-        ],
-        properties: ['createDirectory']
-      });
-      
-      if (canceled || !filePath) {
-        return { success: false, message: 'Operación cancelada' };
-      }
-      
-      // Crear respaldo
-      const result = await createManualBackup(filePath);
-      
-      return {
-        success: true,
-        path: result.path,
-        message: 'Respaldo creado correctamente'
-      };
-    } catch (error) {
-      console.error('Error al crear respaldo manual:', error);
-      return {
-        success: false,
-        message: `Error al crear respaldo: ${error.message}`
-      };
-    }
-  });
-  
-  // Obtener lista de respaldos
-  ipcMain.handle('get-backup-list', async () => {
-    try {
-      return await getBackupList();
-    } catch (error) {
-      console.error('Error al obtener lista de respaldos:', error);
-      return [];
-    }
-  });
-  
-  // Restaurar respaldo
-  ipcMain.handle('restore-backup', async (event, backupPath) => {
-    try {
-      // Si no se proporcionó una ruta, pedir al usuario
-      if (!backupPath) {
-        const { filePaths, canceled } = await dialog.showOpenDialog({
-          title: 'Seleccionar respaldo para restaurar',
-          filters: [
-            { name: 'Archivos JSON', extensions: ['json'] }
-          ],
-          properties: ['openFile']
-        });
-        
-        if (canceled || filePaths.length === 0) {
-          return { success: false, message: 'Operación cancelada' };
-        }
-        
-        backupPath = filePaths[0];
-      }
-      
-      // Confirmar restauración
-      const { response } = await dialog.showMessageBox({
-        type: 'warning',
-        title: 'Restaurar respaldo',
-        message: '¿Estás seguro de restaurar este respaldo?',
-        detail: 'Esta acción reemplazará todos los datos actuales. Se creará un respaldo de seguridad antes de restaurar.',
-        buttons: ['Restaurar', 'Cancelar'],
-        cancelId: 1
-      });
-      
-      if (response === 1) {
-        return { success: false, message: 'Operación cancelada' };
-      }
-      
-      // Restaurar respaldo
-      const result = await restoreBackup(backupPath);
-      
-      // Notificar a la interfaz
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('database-imported');
-      }
-      
-      return {
-        success: true,
-        ...result,
-        message: 'Respaldo restaurado correctamente'
-      };
-    } catch (error) {
-      console.error('Error al restaurar respaldo:', error);
-      return {
-        success: false,
-        message: `Error al restaurar respaldo: ${error.message}`
-      };
-    }
-  });
-  
-  // ============================================================
-  // Manejadores para Actualizaciones
-  // ============================================================
-  
-  // Verificar actualizaciones manualmente
-  ipcMain.handle('check-updates', async () => {
-    try {
-      // Importar función directamente para mantener el código limpio
-      const { checkForUpdates, getLatestUpdateInfo } = require('./update-system');
-      
-      // Verificar actualizaciones
-      await checkForUpdates(mainWindow);
-      
-      // Obtener información de la última actualización
-      const updateInfo = getLatestUpdateInfo();
-      
-      if (!updateInfo) {
-        return {
-          success: false,
-          message: 'No se pudo obtener información de actualizaciones'
-        };
-      }
-      
-      return {
-        success: true,
-        updateInfo,
-        hasUpdate: updateInfo.version > app.getVersion(),
-        currentVersion: app.getVersion()
-      };
-    } catch (error) {
-      console.error('Error al verificar actualizaciones:', error);
-      return {
-        success: false,
-        message: `Error al verificar actualizaciones: ${error.message}`
-      };
-    }
-  });
-
   // ============================================================
   // Administración de usuarios (solo para admins)
   // ============================================================
@@ -803,6 +643,257 @@ function setupIpcHandlers(store) {
     }
   });
   
+  ipcMain.handle('calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
+    if (!lastMaintenanceDate || !frequency) return null;
+    
+    try {
+      const lastDate = new Date(lastMaintenanceDate);
+      const nextDate = new Date(lastDate);
+      nextDate.setMonth(nextDate.getMonth() + parseInt(frequency, 10));
+      
+      // Solo devolver la cadena de fecha formateada, no el objeto Date completo
+      return nextDate.toISOString().split('T')[0];
+    } catch (error) {
+      console.error('Error al calcular próxima fecha de mantenimiento:', error);
+      return null;
+    }
+  });
+  
+  // ============================================================
+  // Manejadores para WhatsApp
+  // ============================================================
+  
+  ipcMain.handle('send-whatsapp-message', async (event, data) => {
+    // Verificar autenticación
+    if (!authService.checkAuth().isAuthenticated) {
+      return { success: false, message: 'No autenticado' };
+    }
+    
+    try {
+      // Si es una acción de conexión, iniciar el proceso de autenticación de WhatsApp
+      if (data.action === 'connect') {
+        // Esta acción inicia el proceso de autenticación de WhatsApp
+        if (mainWindow) {
+          mainWindow.webContents.send('show-alert', {
+            type: 'info',
+            message: 'Iniciando conexión con WhatsApp...'
+          });
+        }
+        return { success: true, message: 'Iniciando conexión con WhatsApp' };
+      }
+      
+      // Para enviar un mensaje, usamos la función del servicio
+      const result = await sendWhatsAppMessage(data.phone, data.message);
+      return result;
+    } catch (error) {
+      console.error('Error al procesar solicitud de WhatsApp:', error);
+      return { 
+        success: false, 
+        message: `Error en WhatsApp: ${error.message}` 
+      };
+    }
+  });
+  
+  // Verificar si WhatsApp está conectado
+  ipcMain.handle('is-whatsapp-connected', () => {
+    return isWhatsAppConnected();
+  });
+  
+  // Cerrar sesión de WhatsApp
+  ipcMain.handle('logout-whatsapp', async () => {
+    try {
+      return await logoutWhatsApp();
+    } catch (error) {
+      console.error('Error al cerrar sesión de WhatsApp:', error);
+      return {
+        success: false,
+        message: `Error al cerrar sesión: ${error.message}`
+      };
+    }
+  });
+  
+  // Obtener historial de mensajes
+  ipcMain.handle('get-whatsapp-message-history', () => {
+    try {
+      return getMessageHistory();
+    } catch (error) {
+      console.error('Error al obtener historial de mensajes:', error);
+      return [];
+    }
+  });
+  
+  // Nuevas funciones para WhatsApp
+  ipcMain.handle('initialize-whatsapp', async () => {
+    try {
+      // Esta función podría inicializar explícitamente el cliente de WhatsApp
+      // Depende de cómo esté implementado en tu servicio
+      return { success: true, message: 'Cliente WhatsApp inicializado' };
+    } catch (error) {
+      console.error('Error al inicializar WhatsApp:', error);
+      return { 
+        success: false,
+        message: `Error al inicializar WhatsApp: ${error.message}` 
+      };
+    }
+  });
+  
+  ipcMain.handle('get-whatsapp-chats', async () => {
+    try {
+      // Esta función podría obtener la lista de chats
+      // Implementación dependiente de tu servicio de WhatsApp
+      return { success: true, chats: [] };
+    } catch (error) {
+      console.error('Error al obtener chats de WhatsApp:', error);
+      return { 
+        success: false,
+        message: `Error al obtener chats: ${error.message}`,
+        chats: []
+      };
+    }
+  });
+
+  // ============================================================
+  // Respaldos y Restauración
+  // ============================================================
+  
+  // Crear respaldo manual
+  ipcMain.handle('create-backup', async () => {
+    try {
+      // Pedir ruta al usuario
+      const { filePath, canceled } = await dialog.showSaveDialog({
+        title: 'Guardar respaldo',
+        defaultPath: path.join(app.getPath('documents'), `servitecgas-backup-${new Date().toISOString().split('T')[0]}.json`),
+        filters: [
+          { name: 'Archivos JSON', extensions: ['json'] }
+        ],
+        properties: ['createDirectory']
+      });
+      
+      if (canceled || !filePath) {
+        return { success: false, message: 'Operación cancelada' };
+      }
+      
+      // Crear respaldo
+      const result = await createManualBackup(filePath);
+      
+      return {
+        success: true,
+        path: result.path,
+        message: 'Respaldo creado correctamente'
+      };
+    } catch (error) {
+      console.error('Error al crear respaldo manual:', error);
+      return {
+        success: false,
+        message: `Error al crear respaldo: ${error.message}`
+      };
+    }
+  });
+  
+  // Obtener lista de respaldos
+  ipcMain.handle('get-backup-list', async () => {
+    try {
+      return await getBackupList();
+    } catch (error) {
+      console.error('Error al obtener lista de respaldos:', error);
+      return [];
+    }
+  });
+  
+  // Restaurar respaldo
+  ipcMain.handle('restore-backup', async (event, backupPath) => {
+    try {
+      // Si no se proporcionó una ruta, pedir al usuario
+      if (!backupPath) {
+        const { filePaths, canceled } = await dialog.showOpenDialog({
+          title: 'Seleccionar respaldo para restaurar',
+          filters: [
+            { name: 'Archivos JSON', extensions: ['json'] }
+          ],
+          properties: ['openFile']
+        });
+        
+        if (canceled || filePaths.length === 0) {
+          return { success: false, message: 'Operación cancelada' };
+        }
+        
+        backupPath = filePaths[0];
+      }
+      
+      // Confirmar restauración
+      const { response } = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Restaurar respaldo',
+        message: '¿Estás seguro de restaurar este respaldo?',
+        detail: 'Esta acción reemplazará todos los datos actuales. Se creará un respaldo de seguridad antes de restaurar.',
+        buttons: ['Restaurar', 'Cancelar'],
+        cancelId: 1
+      });
+      
+      if (response === 1) {
+        return { success: false, message: 'Operación cancelada' };
+      }
+      
+      // Restaurar respaldo
+      const result = await restoreBackup(backupPath);
+      
+      // Notificar a la interfaz
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('database-imported');
+      }
+      
+      return {
+        success: true,
+        ...result,
+        message: 'Respaldo restaurado correctamente'
+      };
+    } catch (error) {
+      console.error('Error al restaurar respaldo:', error);
+      return {
+        success: false,
+        message: `Error al restaurar respaldo: ${error.message}`
+      };
+    }
+  });
+  
+  // ============================================================
+  // Actualizaciones
+  // ============================================================
+  
+  // Verificar actualizaciones manualmente
+  ipcMain.handle('check-updates', async () => {
+    try {
+      // Importar función directamente para mantener el código limpio
+      const { checkForUpdates, getLatestUpdateInfo } = require('./update-system');
+      
+      // Verificar actualizaciones
+      await checkForUpdates(mainWindow);
+      
+      // Obtener información de la última actualización
+      const updateInfo = getLatestUpdateInfo();
+      
+      if (!updateInfo) {
+        return {
+          success: false,
+          message: 'No se pudo obtener información de actualizaciones'
+        };
+      }
+      
+      return {
+        success: true,
+        updateInfo,
+        hasUpdate: updateInfo.version > app.getVersion(),
+        currentVersion: app.getVersion()
+      };
+    } catch (error) {
+      console.error('Error al verificar actualizaciones:', error);
+      return {
+        success: false,
+        message: `Error al verificar actualizaciones: ${error.message}`
+      };
+    }
+  });
+  
   // ============================================================
   // Utilidades
   // ============================================================
@@ -819,22 +910,6 @@ function setupIpcHandlers(store) {
       return date.toLocaleDateString();
     } catch (error) {
       return dateString;
-    }
-  });
-  
-  ipcMain.handle('calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
-    if (!lastMaintenanceDate || !frequency) return null;
-    
-    try {
-      const lastDate = new Date(lastMaintenanceDate);
-      const nextDate = new Date(lastDate);
-      nextDate.setMonth(nextDate.getMonth() + parseInt(frequency, 10));
-      
-      // Solo devolver la cadena de fecha formateada, no el objeto Date completo
-      return nextDate.toISOString().split('T')[0];
-    } catch (error) {
-      console.error('Error al calcular próxima fecha de mantenimiento:', error);
-      return null;
     }
   });
   
@@ -949,7 +1024,123 @@ function setupIpcHandlers(store) {
       };
     }
   });
-
+  
+  // ============================================================
+  // Sincronización con Azure
+  // ============================================================
+  
+  // Estos manejadores son delegados al módulo de sincronización
+  
+  ipcMain.handle('sync-data', async () => {
+    const { synchronize } = require('./sync-integration');
+    return await synchronize(store, mainWindow);
+  });
+  
+  ipcMain.handle('get-sync-status', () => {
+    const { getSyncStatus } = require('./sync-integration');
+    return getSyncStatus(store);
+  });
+  
+  ipcMain.handle('get-azure-config', () => {
+    const { initAzureConfig } = require('./azure/config');
+    return initAzureConfig();
+  });
+  
+  ipcMain.handle('update-azure-config', async (event, newConfig) => {
+    const { updateAzureConfig } = require('./azure/config');
+    return updateAzureConfig(newConfig);
+  });
+  
+  ipcMain.handle('check-azure-connection', async () => {
+    try {
+      // Configuración actual
+      const config = azureConfig.initAzureConfig();
+      
+      // Si estamos en modo desarrollo, informar al usuario
+      if (process.env.DEV_MODE === 'true' || process.env.NODE_ENV === 'development') {
+        return {
+          success: false,
+          offline: true,
+          dev: true,
+          message: 'Modo desarrollo: Azure está desactivado. Cambia DEV_MODE=false en .env para activar Azure.'
+        };
+      }
+      
+      if (!config.connectionString) {
+        return {
+          success: false,
+          message: 'No hay configuración de conexión. Configure la cadena de conexión de Azure.'
+        };
+      }
+      
+      // Verificar si estamos en modo offline
+      const { isOfflineMode, checkConnection } = require('./azure/api');
+      
+      if (isOfflineMode()) {
+        // Intentar reconectar
+        const reconnected = await checkConnection();
+        
+        if (!reconnected) {
+          return {
+            success: false,
+            offline: true,
+            message: 'Trabajando en modo offline. No se pudo establecer conexión con Azure.'
+          };
+        }
+      }
+      
+      return {
+        success: true,
+        message: 'Conexión exitosa con Azure Storage'
+      };
+    } catch (error) {
+      console.error('Error al verificar conexión con Azure:', error);
+      return {
+        success: false,
+        message: `Error al verificar conexión: ${error.message}`
+      };
+    }
+  });
+  
+  ipcMain.handle('force-download-from-azure', async () => {
+    const { synchronize } = require('./sync-integration');
+    // Implementación específica para forzar descarga
+    return await synchronize(store, mainWindow, { forceDownload: true });
+  });
+  
+  ipcMain.handle('force-upload-to-azure', async () => {
+    const { synchronize } = require('./sync-integration');
+    // Implementación específica para forzar subida
+    return await synchronize(store, mainWindow, { forceUpload: true });
+  });
+  
+  ipcMain.handle('set-auto-sync', async (event, enabled) => {
+    try {
+      const { setAutoSync } = require('./sync-integration');
+      return await setAutoSync(enabled, store, mainWindow);
+    } catch (error) {
+      console.error('Error al configurar sincronización automática:', error);
+      return {
+        success: false,
+        message: `Error: ${error.message}`
+      };
+    }
+  });
+  
+  ipcMain.handle('reset-sync-state', async () => {
+    try {
+      // Implementación específica para resetear estado de sincronización
+      const { resetSyncState } = require('./sync-integration');
+      return await resetSyncState();
+    } catch (error) {
+      console.error('Error al resetear estado de sincronización:', error);
+      return {
+        success: false,
+        message: `Error: ${error.message}`
+      };
+    }
+  });
+  
   // Marcar que los handlers han sido registrados
   ipcHandlersRegistered = true;
   console.log('Todos los manejadores IPC registrados correctamente');

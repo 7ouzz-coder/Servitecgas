@@ -304,6 +304,71 @@ function setupDashboardEvents() {
           clientId.value = '';
         }
         
+        // Configurar el evento del botón de guardar cliente
+        const saveClientBtn = document.getElementById('saveClientBtn');
+        if (saveClientBtn) {
+          // Remover eventos previos
+          const newSaveBtn = saveClientBtn.cloneNode(true);
+          saveClientBtn.parentNode.replaceChild(newSaveBtn, saveClientBtn);
+          
+          // Agregar nuevo evento
+          newSaveBtn.addEventListener('click', async () => {
+            try {
+              // Deshabilitar botón mientras se procesa
+              newSaveBtn.disabled = true;
+              const originalText = newSaveBtn.innerHTML;
+              newSaveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+              
+              // Obtener datos del formulario
+              const clientForm = document.getElementById('clientForm');
+              if (!clientForm.checkValidity()) {
+                clientForm.reportValidity();
+                newSaveBtn.disabled = false;
+                newSaveBtn.innerHTML = originalText;
+                return;
+              }
+              
+              const name = document.getElementById('clientName').value;
+              const phone = document.getElementById('clientPhone').value;
+              const email = document.getElementById('clientEmail').value;
+              const notes = document.getElementById('clientNotes').value;
+              
+              // Crear objeto de cliente
+              const client = {
+                name,
+                phone,
+                email,
+                notes
+              };
+              
+              console.log('Guardando cliente desde dashboard:', client);
+              
+              // Enviar al backend
+              const result = await window.api.addClient(client);
+              
+              if (result) {
+                showAlert('success', 'Cliente agregado correctamente');
+                
+                // Cerrar modal
+                const modal = bootstrap.Modal.getInstance(clientModal);
+                modal.hide();
+                
+                // Recargar dashboard
+                loadDashboard();
+              } else {
+                throw new Error('Error al guardar cliente');
+              }
+            } catch (error) {
+              console.error('Error al guardar cliente:', error);
+              showAlert('danger', `Error al guardar cliente: ${error.message || 'Error desconocido'}`);
+            } finally {
+              // Restaurar botón
+              newSaveBtn.disabled = false;
+              newSaveBtn.innerHTML = originalText;
+            }
+          });
+        }
+        
         // Mostrar modal
         try {
           const modal = new bootstrap.Modal(clientModal);
@@ -319,13 +384,175 @@ function setupDashboardEvents() {
     });
   }
   
-  // Botones para ver detalles de cliente - Simplificado
+  // Botones para ver detalles de cliente
   const viewClientBtns = document.querySelectorAll('.view-client-btn');
   viewClientBtns.forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       const clientId = btn.getAttribute('data-id');
-      alert(`Se solicitó ver detalles del cliente con ID: ${clientId}`);
+      
+      try {
+        // Obtener los datos del cliente
+        const clients = await window.api.getClients();
+        const client = clients.find(c => c.id === clientId);
+        
+        if (!client) {
+          showAlert('warning', 'Cliente no encontrado');
+          return;
+        }
+        
+        // Obtener las instalaciones asociadas al cliente
+        const installations = await window.api.getInstallations();
+        const clientInstallations = installations.filter(i => i.clientId === clientId);
+        
+        // Crear contenido modal
+        let installationsHtml = '';
+        if (clientInstallations.length > 0) {
+          installationsHtml = `
+            <h6 class="mt-4 mb-3">Instalaciones</h6>
+            <div class="list-group">
+              ${clientInstallations.map(installation => `
+                <div class="list-group-item">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">${installation.address || 'Sin dirección'}</h6>
+                    <small>Tipo: ${installation.type || 'No especificado'}</small>
+                  </div>
+                  <p class="mb-1">
+                    <strong>Componentes:</strong> ${installation.components ? installation.components.length : 0}
+                  </p>
+                  <small class="text-muted">
+                    Fecha de instalación: ${formatDate(installation.date) || 'No registrada'}
+                  </small>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        } else {
+          installationsHtml = `
+            <div class="alert alert-info mt-4">
+              <i class="bi bi-info-circle me-2"></i>
+              No hay instalaciones registradas para este cliente.
+            </div>
+          `;
+        }
+        
+        // Crear modal para mostrar los detalles
+        const modalHtml = `
+          <div class="modal fade" id="clientDetailsModal" tabindex="-1" aria-labelledby="clientDetailsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="clientDetailsModalLabel">Detalles del Cliente</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="row">
+                    <div class="col-md-6">
+                      <p><strong>Nombre:</strong> ${client.name || 'No especificado'}</p>
+                      <p><strong>Teléfono:</strong> ${client.phone || 'No registrado'}</p>
+                      <p><strong>Email:</strong> ${client.email || 'No registrado'}</p>
+                    </div>
+                    <div class="col-md-6">
+                      <p><strong>Fecha de creación:</strong> ${formatDate(client.createdAt) || 'No registrada'}</p>
+                      <p><strong>Última modificación:</strong> ${formatDate(client.lastModified) || 'No registrada'}</p>
+                    </div>
+                  </div>
+                  
+                  ${client.notes ? `
+                    <div class="card mb-3">
+                      <div class="card-header">Notas</div>
+                      <div class="card-body">
+                        <p class="card-text">${client.notes}</p>
+                      </div>
+                    </div>
+                  ` : ''}
+                  
+                  ${installationsHtml}
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                  <button type="button" class="btn btn-primary" id="editClientFromDetailsBtn" data-id="${client.id}">
+                    <i class="bi bi-pencil"></i> Editar Cliente
+                  </button>
+                  <button type="button" class="btn btn-outline-primary" id="viewInstallationsFromDetailsBtn" data-id="${client.id}">
+                    <i class="bi bi-tools"></i> Ver Instalaciones
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Agregar modal al DOM
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = modalHtml;
+        document.body.appendChild(tempDiv.firstChild);
+        
+        // Configurar botones del modal
+        const editClientBtn = document.getElementById('editClientFromDetailsBtn');
+        if (editClientBtn) {
+          editClientBtn.addEventListener('click', () => {
+            // Cerrar modal de detalles
+            const detailsModal = bootstrap.Modal.getInstance(document.getElementById('clientDetailsModal'));
+            detailsModal.hide();
+            
+            // Mostrar modal de edición
+            // Llenar formulario con datos del cliente
+            document.getElementById('clientId').value = client.id;
+            document.getElementById('clientName').value = client.name || '';
+            document.getElementById('clientPhone').value = client.phone || '';
+            document.getElementById('clientEmail').value = client.email || '';
+            document.getElementById('clientNotes').value = client.notes || '';
+            
+            document.getElementById('clientModalLabel').textContent = 'Editar Cliente';
+            
+            // Configurar botón guardar (similar a tu código existente)
+            setupClientSaveButton();
+            
+            // Mostrar modal
+            const clientModal = new bootstrap.Modal(document.getElementById('clientModal'));
+            clientModal.show();
+          });
+        }
+        
+        const viewInstallationsBtn = document.getElementById('viewInstallationsFromDetailsBtn');
+        if (viewInstallationsBtn) {
+          viewInstallationsBtn.addEventListener('click', () => {
+            // Cerrar modal de detalles
+            const detailsModal = bootstrap.Modal.getInstance(document.getElementById('clientDetailsModal'));
+            detailsModal.hide();
+            
+            // Cambiar a la sección de instalaciones y filtrar por cliente
+            const installationsLink = document.querySelector('[data-section="installations"]');
+            if (installationsLink) {
+              installationsLink.click();
+              
+              // Esperar a que cargue y filtrar por cliente
+              setTimeout(() => {
+                const clientFilterSelect = document.getElementById('installationClientFilter');
+                if (clientFilterSelect) {
+                  clientFilterSelect.value = clientId;
+                  // Disparar evento de cambio para activar el filtro
+                  clientFilterSelect.dispatchEvent(new Event('change'));
+                }
+              }, 300);
+            }
+          });
+        }
+        
+        // Mostrar modal
+        const modal = new bootstrap.Modal(document.getElementById('clientDetailsModal'));
+        modal.show();
+        
+        // Eliminar modal cuando se cierre
+        document.getElementById('clientDetailsModal').addEventListener('hidden.bs.modal', function() {
+          this.remove();
+        });
+        
+      } catch (error) {
+        console.error('Error al mostrar detalles del cliente:', error);
+        showAlert('danger', `Error al mostrar detalles del cliente: ${error.message || 'Error desconocido'}`);
+      }
     });
   });
   
@@ -350,14 +577,14 @@ function getBadgeColor(days) {
 
 // Formatear fecha - Versión segura
 function formatDate(dateString) {
-  if (!dateString) return '-';
-  
+  if (!dateString) return '';
   try {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
     return date.toLocaleDateString();
   } catch (error) {
-    console.error("Error al formatear fecha:", error);
-    return dateString || '-';
+    console.error('Error al formatear fecha:', error);
+    return '';
   }
 }
 

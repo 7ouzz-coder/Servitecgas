@@ -7,7 +7,7 @@ const path = require('path');
 
 // URL base para obtener información de actualizaciones
 // REEMPLAZAR con tu URL real en Azure Blob Storage
-const UPDATE_CHECK_URL = 'https://tualma.blob.core.windows.net/servitecgas/version.json';
+const UPDATE_CHECK_URL = 'https://storage.servitecgas.com/updates/version.json';
 
 // Intervalo entre verificaciones (24 horas)
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -43,42 +43,78 @@ function initUpdateSystem(mainWindow) {
  * @param {BrowserWindow} mainWindow - Referencia a la ventana principal
  */
 async function checkForUpdates(mainWindow) {
-  try {
-    // Obtener información de la última versión
-    const response = await axios.get(UPDATE_CHECK_URL, {
-      headers: { 'Cache-Control': 'no-cache' },
-      timeout: 10000 // 10 segundos de timeout
-    });
-    
-    // Verificar que la respuesta tiene la estructura correcta
-    if (!response.data || !response.data.version) {
-      console.error('Formato de datos de actualización inválido');
-      return;
-    }
-    
-    // Guardar información de actualización
-    latestUpdateInfo = response.data;
-    const latestVersion = response.data.version;
-    const currentVersion = app.getVersion();
-    
-    // Comparar versiones
-    if (semver.gt(latestVersion, currentVersion)) {
-      console.log(`Nueva versión disponible: ${latestVersion} (actual: ${currentVersion})`);
+    try {
+      // Simulación para desarrollo: crear una versión local si no podemos conectar
+      let updateData;
       
-      // Notificar a la ventana principal
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-available', latestUpdateInfo);
-      } else {
-        // Si la ventana no está disponible, mostrar diálogo nativo
-        showUpdateDialog(latestUpdateInfo);
+      try {
+        // Intentar obtener datos reales primero
+        const response = await axios.get(UPDATE_CHECK_URL, {
+          headers: { 'Cache-Control': 'no-cache' },
+          timeout: 5000 // Reducir el timeout a 5 segundos
+        });
+        
+        updateData = response.data;
+      } catch (connectionError) {
+        console.log('No se pudo conectar al servidor de actualizaciones. Usando datos locales.');
+        
+        // Crear datos de actualización local para desarrollo
+        const currentVersion = app.getVersion();
+        
+        // Crear versión simulada: incrementar último dígito
+        const versionParts = currentVersion.split('.');
+        versionParts[versionParts.length - 1] = parseInt(versionParts[versionParts.length - 1] || 0) + 1;
+        const simulatedNewVersion = versionParts.join('.');
+        
+        updateData = {
+          version: simulatedNewVersion,
+          url: "https://storage.servitecgas.com/updates/servitecgas-" + simulatedNewVersion + ".exe",
+          notes: "Esta es una actualización simulada para fines de desarrollo. Los servidores reales no están disponibles.",
+          previousVersions: [
+            {
+              version: currentVersion,
+              date: new Date().toISOString(),
+              notes: "Versión actual del sistema."
+            }
+          ]
+        };
+        
+        // Determinar si debemos simular una nueva versión disponible o no
+        const simulateNewVersion = process.env.NODE_ENV === 'development';
+        if (!simulateNewVersion) {
+          updateData.version = currentVersion;
+        }
       }
-    } else {
-      console.log(`La aplicación está actualizada (${currentVersion})`);
+      
+      // Verificar que la respuesta tiene la estructura correcta
+      if (!updateData || !updateData.version) {
+        console.error('Formato de datos de actualización inválido');
+        return;
+      }
+      
+      // Guardar información de actualización
+      latestUpdateInfo = updateData;
+      const latestVersion = updateData.version;
+      const currentVersion = app.getVersion();
+      
+      // Comparar versiones
+      if (semver.gt(latestVersion, currentVersion)) {
+        console.log(`Nueva versión disponible: ${latestVersion} (actual: ${currentVersion})`);
+        
+        // Notificar a la ventana principal
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-available', latestUpdateInfo);
+        } else {
+          // Si la ventana no está disponible, mostrar diálogo nativo
+          showUpdateDialog(latestUpdateInfo);
+        }
+      } else {
+        console.log(`La aplicación está actualizada (${currentVersion})`);
+      }
+    } catch (error) {
+      console.error('Error al verificar actualizaciones:', error.message);
     }
-  } catch (error) {
-    console.error('Error al verificar actualizaciones:', error.message);
   }
-}
 
 /**
  * Muestra un diálogo de actualización nativo
