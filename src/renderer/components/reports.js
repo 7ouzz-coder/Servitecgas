@@ -2,257 +2,281 @@
 
 // Cargar sección de reportes
 async function loadReports() {
-    const reportsSection = document.getElementById('reports-section');
+  const reportsSection = document.getElementById('reports-section');
+  
+  try {
+    // Obtener datos necesarios para los reportes
+    const clients = await window.api.getClients();
+    const installations = await window.api.getInstallations();
+    const upcomingMaintenance = await window.api.getUpcomingMaintenance();
     
-    try {
-      // Obtener datos necesarios para los reportes
-      const clients = await window.api.getClients();
-      const installations = await window.api.getInstallations();
-      const upcomingMaintenance = await window.api.getUpcomingMaintenance();
+    // Crear contenido HTML
+    reportsSection.innerHTML = `
+      <h2 class="mb-4">Reportes y Estadísticas</h2>
       
-      // Crear contenido HTML
-      reportsSection.innerHTML = `
-        <h2 class="mb-4">Reportes y Estadísticas</h2>
-        
-        <div class="row mb-4">
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Generar Reportes</h5>
-              </div>
-              <div class="card-body">
-                <div class="list-group">
-                  <button class="list-group-item list-group-item-action" id="maintenanceReportBtn">
-                    <div class="d-flex w-100 justify-content-between">
-                      <h5 class="mb-1">Reporte de Mantenimientos</h5>
-                      <small class="text-muted">PDF/Excel</small>
-                    </div>
-                    <p class="mb-1">Genera un reporte detallado de los mantenimientos programados y realizados en un periodo específico.</p>
-                  </button>
-                  
-                  <button class="list-group-item list-group-item-action" id="clientReportBtn">
-                    <div class="d-flex w-100 justify-content-between">
-                      <h5 class="mb-1">Reporte de Clientes</h5>
-                      <small class="text-muted">PDF/Excel</small>
-                    </div>
-                    <p class="mb-1">Lista de clientes con sus instalaciones y componentes asociados.</p>
-                  </button>
-                  
-                  <button class="list-group-item list-group-item-action" id="installationTypeReportBtn">
-                    <div class="d-flex w-100 justify-content-between">
-                      <h5 class="mb-1">Reporte por Tipo de Instalación</h5>
-                      <small class="text-muted">PDF/Excel</small>
-                    </div>
-                    <p class="mb-1">Análisis detallado por tipo de instalación (Residencial, Comercial, Industrial).</p>
-                  </button>
-                  
-                  <button class="list-group-item list-group-item-action" id="componentReportBtn">
-                    <div class="d-flex w-100 justify-content-between">
-                      <h5 class="mb-1">Reporte de Componentes</h5>
-                      <small class="text-muted">PDF/Excel</small>
-                    </div>
-                    <p class="mb-1">Inventario de componentes instalados por marca, modelo y fecha de instalación.</p>
-                  </button>
-                </div>
-              </div>
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Generar Reportes</h5>
             </div>
-          </div>
-          
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">
-                <h5 class="mb-0">Exportar Datos</h5>
-              </div>
-              <div class="card-body">
-                <div class="mb-3">
-                  <label for="exportTypeSelect" class="form-label">Selecciona qué exportar:</label>
-                  <select id="exportTypeSelect" class="form-select mb-2">
-                    <option value="all">Todos los datos</option>
-                    <option value="clients">Solo clientes</option>
-                    <option value="installations">Solo instalaciones</option>
-                    <option value="maintenance">Solo mantenimientos programados</option>
-                  </select>
-                </div>
+            <div class="card-body">
+              <div class="list-group">
+                <button class="list-group-item list-group-item-action" id="maintenanceReportBtn">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">Reporte de Mantenimientos</h5>
+                    <small class="text-muted">PDF/Excel</small>
+                  </div>
+                  <p class="mb-1">Genera un reporte detallado de los mantenimientos programados y realizados en un periodo específico.</p>
+                </button>
                 
-                <div class="mb-3">
-                  <label for="exportFormatSelect" class="form-label">Formato:</label>
-                  <select id="exportFormatSelect" class="form-select mb-3">
-                    <option value="excel">Excel (.xlsx)</option>
-                    <option value="csv">CSV</option>
-                    <option value="json">JSON</option>
-                  </select>
-                </div>
+                <button class="list-group-item list-group-item-action" id="clientReportBtn">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">Reporte de Clientes</h5>
+                    <small class="text-muted">PDF/Excel</small>
+                  </div>
+                  <p class="mb-1">Lista de clientes con sus instalaciones y componentes asociados.</p>
+                </button>
                 
-                <button id="exportDataBtn" class="btn btn-primary">
-                  <i class="bi bi-download"></i> Exportar Datos
+                <button class="list-group-item list-group-item-action" id="installationTypeReportBtn">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">Reporte por Tipo de Instalación</h5>
+                    <small class="text-muted">PDF/Excel</small>
+                  </div>
+                  <p class="mb-1">Análisis detallado por tipo de instalación (Residencial, Comercial, Industrial).</p>
+                </button>
+                
+                <button class="list-group-item list-group-item-action" id="componentReportBtn">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">Reporte de Componentes</h5>
+                    <small class="text-muted">PDF/Excel</small>
+                  </div>
+                  <p class="mb-1">Inventario de componentes instalados por marca, modelo y fecha de instalación.</p>
                 </button>
               </div>
             </div>
           </div>
         </div>
         
-        <!-- Gráficos y Estadísticas -->
-        <div class="row">
-          <!-- Distribución de tipos de instalación -->
-          <div class="col-md-6 mb-4">
-            <div class="card">
-              <div class="card-header">
-                <h5 class="mb-0">Distribución por Tipo de Instalación</h5>
-              </div>
-              <div class="card-body">
-                <canvas id="installationTypeChart" height="250"></canvas>
-              </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Exportar Datos</h5>
             </div>
-          </div>
-          
-          <!-- Estado de mantenimientos -->
-          <div class="col-md-6 mb-4">
-            <div class="card">
-              <div class="card-header">
-                <h5 class="mb-0">Estado de Mantenimientos</h5>
+            <div class="card-body">
+              <div class="mb-3">
+                <label for="exportTypeSelect" class="form-label">Selecciona qué exportar:</label>
+                <select id="exportTypeSelect" class="form-select mb-2">
+                  <option value="all">Todos los datos</option>
+                  <option value="clients">Solo clientes</option>
+                  <option value="installations">Solo instalaciones</option>
+                  <option value="maintenance">Solo mantenimientos programados</option>
+                </select>
               </div>
-              <div class="card-body">
-                <canvas id="maintenanceStatusChart" height="250"></canvas>
+              
+              <div class="mb-3">
+                <label for="exportFormatSelect" class="form-label">Formato:</label>
+                <select id="exportFormatSelect" class="form-select mb-3">
+                  <option value="excel">Excel (.xlsx)</option>
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
               </div>
-            </div>
-          </div>
-          
-          <!-- Componentes por cliente (top 10) -->
-          <div class="col-md-12 mb-4">
-            <div class="card">
-              <div class="card-header">
-                <h5 class="mb-0">Componentes por Cliente (Top 10)</h5>
+              
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="selectFolderCheck" checked>
+                <label class="form-check-label" for="selectFolderCheck">
+                  Seleccionar carpeta de destino
+                </label>
               </div>
-              <div class="card-body">
-                <canvas id="componentsPerClientChart" height="200"></canvas>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Actividad mensual -->
-          <div class="col-md-12">
-            <div class="card">
-              <div class="card-header">
-                <h5 class="mb-0">Actividad Mensual (Mantenimientos)</h5>
-              </div>
-              <div class="card-body">
-                <canvas id="monthlyActivityChart" height="200"></canvas>
-              </div>
+              
+              <button id="exportDataBtn" class="btn btn-primary">
+                <i class="bi bi-download"></i> Exportar Datos
+              </button>
             </div>
           </div>
         </div>
-      `;
+      </div>
       
-      // Configurar eventos y gráficos
-      setupReportsEvents();
-      renderCharts(clients, installations, upcomingMaintenance);
-      
-    } catch (error) {
-      reportsSection.innerHTML = `
-        <div class="alert alert-danger">
-          Error al cargar reportes: ${error.message}
+      <!-- Gráficos y Estadísticas -->
+      <div class="row">
+        <!-- Distribución de tipos de instalación -->
+        <div class="col-md-6 mb-4">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Distribución por Tipo de Instalación</h5>
+            </div>
+            <div class="card-body">
+              <canvas id="installationTypeChart" height="250"></canvas>
+            </div>
+          </div>
         </div>
-      `;
-    }
-  }
-  
-  // Configurar eventos para la sección de reportes
-  function setupReportsEvents() {
-    // Botones de reportes
-    const maintenanceReportBtn = document.getElementById('maintenanceReportBtn');
-    const clientReportBtn = document.getElementById('clientReportBtn');
-    const installationTypeReportBtn = document.getElementById('installationTypeReportBtn');
-    const componentReportBtn = document.getElementById('componentReportBtn');
-    
-    if (maintenanceReportBtn) {
-      maintenanceReportBtn.addEventListener('click', () => {
-        showReportConfigModal('maintenance');
-      });
-    }
-    
-    if (clientReportBtn) {
-      clientReportBtn.addEventListener('click', () => {
-        showReportConfigModal('clients');
-      });
-    }
-    
-    if (installationTypeReportBtn) {
-      installationTypeReportBtn.addEventListener('click', () => {
-        showReportConfigModal('installation-type');
-      });
-    }
-    
-    if (componentReportBtn) {
-      componentReportBtn.addEventListener('click', () => {
-        showReportConfigModal('components');
-      });
-    }
-    
-    // Botón de exportación
-    const exportDataBtn = document.getElementById('exportDataBtn');
-    if (exportDataBtn) {
-      exportDataBtn.addEventListener('click', async () => {
-        const exportType = document.getElementById('exportTypeSelect').value;
-        const exportFormat = document.getElementById('exportFormatSelect').value;
         
-        try {
-          // En una implementación real, aquí enviarías estos valores al proceso principal
-          // para que genere y guarde el archivo de exportación
-          showAlert('info', `Preparando exportación de ${exportType} en formato ${exportFormat}...`);
-          
-          // Simulamos un tiempo de procesamiento
-          setTimeout(() => {
-            showAlert('success', 'Datos exportados correctamente');
-          }, 1500);
-        } catch (error) {
-          showAlert('danger', `Error al exportar datos: ${error.message}`);
-        }
-      });
-    }
-  }
-  
-  // Mostrar modal para configurar un reporte
-  function showReportConfigModal(reportType) {
-    let title = '';
-    let customFields = '';
+        <!-- Estado de mantenimientos -->
+        <div class="col-md-6 mb-4">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Estado de Mantenimientos</h5>
+            </div>
+            <div class="card-body">
+              <canvas id="maintenanceStatusChart" height="250"></canvas>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Componentes por cliente (top 10) -->
+        <div class="col-md-12 mb-4">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Componentes por Cliente (Top 10)</h5>
+            </div>
+            <div class="card-body">
+              <canvas id="componentsPerClientChart" height="200"></canvas>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Actividad mensual -->
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Actividad Mensual (Mantenimientos)</h5>
+            </div>
+            <div class="card-body">
+              <canvas id="monthlyActivityChart" height="200"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
     
-    switch (reportType) {
-      case 'maintenance':
-        title = 'Reporte de Mantenimientos';
-        customFields = `
-          <div class="row mb-3">
-            <div class="col-md-6">
-              <label for="reportStartDate" class="form-label">Fecha de inicio:</label>
-              <input type="date" class="form-control" id="reportStartDate">
-            </div>
-            <div class="col-md-6">
-              <label for="reportEndDate" class="form-label">Fecha de fin:</label>
-              <input type="date" class="form-control" id="reportEndDate">
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Estado de mantenimiento:</label>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" value="pending" id="pendingCheck" checked>
-              <label class="form-check-label" for="pendingCheck">
-                Pendientes
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" value="completed" id="completedCheck" checked>
-              <label class="form-check-label" for="completedCheck">
-                Realizados
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" value="urgent" id="urgentCheck" checked>
-              <label class="form-check-label" for="urgentCheck">
-                Urgentes
-              </label>
-            </div>
-          </div>
-        `;
-        break;
+    // Configurar eventos y gráficos
+    setupReportsEvents();
+    renderCharts(clients, installations, upcomingMaintenance);
+    
+  } catch (error) {
+    reportsSection.innerHTML = `
+      <div class="alert alert-danger">
+        Error al cargar reportes: ${error.message}
+      </div>
+    `;
+  }
+}
+
+// Configurar eventos para la sección de reportes
+function setupReportsEvents() {
+// Botones de reportes
+const maintenanceReportBtn = document.getElementById('maintenanceReportBtn');
+const clientReportBtn = document.getElementById('clientReportBtn');
+const installationTypeReportBtn = document.getElementById('installationTypeReportBtn');
+const componentReportBtn = document.getElementById('componentReportBtn');
+
+if (maintenanceReportBtn) {
+  maintenanceReportBtn.addEventListener('click', () => {
+    showReportConfigModal('maintenance');
+  });
+}
+
+if (clientReportBtn) {
+  clientReportBtn.addEventListener('click', () => {
+    showReportConfigModal('clients');
+  });
+}
+
+if (installationTypeReportBtn) {
+  installationTypeReportBtn.addEventListener('click', () => {
+    showReportConfigModal('installation-type');
+  });
+}
+
+if (componentReportBtn) {
+  componentReportBtn.addEventListener('click', () => {
+    showReportConfigModal('components');
+  });
+}
+
+// Botón de exportación
+const exportDataBtn = document.getElementById('exportDataBtn');
+if (exportDataBtn) {
+  exportDataBtn.addEventListener('click', async () => {
+    const exportType = document.getElementById('exportTypeSelect').value;
+    const exportFormat = document.getElementById('exportFormatSelect').value;
+    const selectFolder = document.getElementById('selectFolderCheck').checked;
+    
+    try {
+      // Deshabilitar botón mientras se procesa la exportación
+      exportDataBtn.disabled = true;
+      const originalText = exportDataBtn.innerHTML;
+      exportDataBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Exportando...';
+      
+      showAlert('info', `Preparando exportación de ${exportType} en formato ${exportFormat}...`);
+      
+      // Solicitar al backend que exporte los datos
+      const result = await window.api.exportData({
+        dataType: exportType,
+        format: exportFormat,
+        selectFolder: selectFolder // Indicar si queremos seleccionar la carpeta de destino
+      });
+      
+      if (result.success) {
+        showAlert('success', `Datos exportados correctamente a: ${result.filePath}`);
+      } else {
+        showAlert('danger', `Error al exportar datos: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error al exportar datos:', error);
+      showAlert('danger', `Error al exportar datos: ${error.message}`);
+    } finally {
+      // Restaurar botón
+      exportDataBtn.disabled = false;
+      exportDataBtn.innerHTML = originalText;
+    }
+  });
+}
+}
+
+// Mostrar modal para configurar un reporte
+function showReportConfigModal(reportType) {
+let title = '';
+let customFields = '';
+
+switch (reportType) {
+  case 'maintenance':
+    title = 'Reporte de Mantenimientos';
+    customFields = `
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label for="reportStartDate" class="form-label">Fecha de inicio:</label>
+          <input type="date" class="form-control" id="reportStartDate">
+        </div>
+        <div class="col-md-6">
+          <label for="reportEndDate" class="form-label">Fecha de fin:</label>
+          <input type="date" class="form-control" id="reportEndDate">
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Estado de mantenimiento:</label>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="pending" id="pendingCheck" checked>
+          <label class="form-check-label" for="pendingCheck">
+            Pendientes
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="completed" id="completedCheck" checked>
+          <label class="form-check-label" for="completedCheck">
+            Realizados
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="urgent" id="urgentCheck" checked>
+          <label class="form-check-label" for="urgentCheck">
+            Urgentes
+          </label>
+        </div>
+      </div>
+    `;
+    break;
       case 'clients':
         title = 'Reporte de Clientes';
         customFields = `

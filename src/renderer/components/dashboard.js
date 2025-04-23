@@ -1,13 +1,13 @@
-// Componente principal para el dashboard - Versión corregida
+// Componente principal para el dashboard
 
 // Cargar el dashboard
 async function loadDashboard() {
   const dashboardSection = document.getElementById('dashboard-section');
 
   console.log("API disponible:", window.api);
-console.log("getClients disponible:", window.api?.getClients);
-console.log("getInstallations disponible:", window.api?.getInstallations);
-console.log("getUpcomingMaintenance disponible:", window.api?.getUpcomingMaintenance);
+  console.log("getClients disponible:", window.api?.getClients);
+  console.log("getInstallations disponible:", window.api?.getInstallations);
+  console.log("getUpcomingMaintenance disponible:", window.api?.getUpcomingMaintenance);
   
   try {
     // Obtener datos necesarios para el dashboard
@@ -188,7 +188,6 @@ console.log("getUpcomingMaintenance disponible:", window.api?.getUpcomingMainten
   }
 }
 
-// Renderizar tabla de mantenimientos - Versión simplificada
 // Renderizar tabla de mantenimientos - Versión segura para dashboard
 function renderMaintenanceTable(maintenanceList) {
   if (!maintenanceList || !Array.isArray(maintenanceList) || maintenanceList.length === 0) {
@@ -277,7 +276,7 @@ function renderRecentClients(clients) {
   `).join('');
 }
 
-// Configurar eventos del dashboard - Versión simplificada
+// Configurar eventos del dashboard - Versión corregida
 function setupDashboardEvents() {
   // Botón para agregar cliente
   const addClientBtn = document.getElementById('add-client-btn');
@@ -350,8 +349,19 @@ function setupDashboardEvents() {
                 showAlert('success', 'Cliente agregado correctamente');
                 
                 // Cerrar modal
-                const modal = bootstrap.Modal.getInstance(clientModal);
-                modal.hide();
+                const modalInstance = bootstrap.Modal.getInstance(clientModal);
+                if (modalInstance) {
+                  modalInstance.hide();
+                } else {
+                  // Si no se puede obtener la instancia, intentar cerrar manualmente
+                  clientModal.style.display = 'none';
+                  clientModal.classList.remove('show');
+                  document.body.classList.remove('modal-open');
+                  const backdrop = document.querySelector('.modal-backdrop');
+                  if (backdrop) {
+                    backdrop.remove();
+                  }
+                }
                 
                 // Recargar dashboard
                 loadDashboard();
@@ -369,17 +379,32 @@ function setupDashboardEvents() {
           });
         }
         
-        // Mostrar modal
+        // Mostrar modal de forma segura
         try {
-          const modal = new bootstrap.Modal(clientModal);
-          modal.show();
+          let modalInstance = bootstrap.Modal.getInstance(clientModal);
+          if (!modalInstance) {
+            modalInstance = new bootstrap.Modal(clientModal);
+          }
+          modalInstance.show();
         } catch (error) {
           console.error("Error al mostrar modal:", error);
-          alert("No se pudo mostrar el modal de cliente. Verifica la consola para más detalles.");
+          // Si falla bootstrap modal, intentar mostrar de manera básica
+          clientModal.style.display = 'block';
+          clientModal.classList.add('show');
+          document.body.classList.add('modal-open');
+          
+          // Crear backdrop manualmente si es necesario
+          if (!document.querySelector('.modal-backdrop')) {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop fade show';
+            document.body.appendChild(backdrop);
+          }
+          
+          showAlert('warning', 'Se detectó un problema con el modal, pero se intentó mostrar de todos modos.', 3000);
         }
       } else {
         console.error("Modal de cliente no encontrado");
-        alert("Modal de cliente no encontrado en el DOM");
+        showAlert('danger', 'El modal de cliente no está disponible. Por favor, recargue la página.', 5000);
       }
     });
   }
@@ -436,6 +461,12 @@ function setupDashboardEvents() {
           `;
         }
         
+        // Primero verificar si un modal de detalles ya existe y eliminarlo
+        const existingModal = document.getElementById('clientDetailsModal');
+        if (existingModal) {
+          existingModal.remove();
+        }
+        
         // Crear modal para mostrar los detalles
         const modalHtml = `
           <div class="modal fade" id="clientDetailsModal" tabindex="-1" aria-labelledby="clientDetailsModalLabel" aria-hidden="true">
@@ -488,39 +519,92 @@ function setupDashboardEvents() {
         tempDiv.innerHTML = modalHtml;
         document.body.appendChild(tempDiv.firstChild);
         
+        // Asegurarse de que Bootstrap está cargado antes de intentar crear el modal
+        if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+          console.error("Bootstrap no está disponible");
+          showAlert('danger', 'Error: Bootstrap no está disponible', 5000);
+          return;
+        }
+        
         // Configurar botones del modal
         const editClientBtn = document.getElementById('editClientFromDetailsBtn');
         if (editClientBtn) {
           editClientBtn.addEventListener('click', () => {
-            // Cerrar modal de detalles
-            const detailsModal = bootstrap.Modal.getInstance(document.getElementById('clientDetailsModal'));
-            detailsModal.hide();
+            // Cerrar modal de detalles de forma segura
+            try {
+              const detailsModal = document.getElementById('clientDetailsModal');
+              const modalInstance = bootstrap.Modal.getInstance(detailsModal);
+              if (modalInstance) {
+                modalInstance.hide();
+              } else {
+                // Si no se puede obtener la instancia, intentar cerrar manualmente
+                detailsModal.style.display = 'none';
+                detailsModal.classList.remove('show');
+                document.body.classList.remove('modal-open');
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) {
+                  backdrop.remove();
+                }
+              }
+            } catch (error) {
+              console.error('Error al cerrar modal de detalles:', error);
+            }
             
             // Mostrar modal de edición
-            // Llenar formulario con datos del cliente
-            document.getElementById('clientId').value = client.id;
-            document.getElementById('clientName').value = client.name || '';
-            document.getElementById('clientPhone').value = client.phone || '';
-            document.getElementById('clientEmail').value = client.email || '';
-            document.getElementById('clientNotes').value = client.notes || '';
-            
-            document.getElementById('clientModalLabel').textContent = 'Editar Cliente';
-            
-            // Configurar botón guardar (similar a tu código existente)
-            setupClientSaveButton();
-            
-            // Mostrar modal
-            const clientModal = new bootstrap.Modal(document.getElementById('clientModal'));
-            clientModal.show();
+            const clientModal = document.getElementById('clientModal');
+            if (clientModal) {
+              // Llenar formulario con datos del cliente
+              document.getElementById('clientId').value = client.id;
+              document.getElementById('clientName').value = client.name || '';
+              document.getElementById('clientPhone').value = client.phone || '';
+              document.getElementById('clientEmail').value = client.email || '';
+              document.getElementById('clientNotes').value = client.notes || '';
+              
+              document.getElementById('clientModalLabel').textContent = 'Editar Cliente';
+              
+              // Configurar botón guardar (similar a tu código existente)
+              setupClientSaveButton();
+              
+              // Mostrar modal de forma segura
+              try {
+                let clientModalInstance = bootstrap.Modal.getInstance(clientModal);
+                if (!clientModalInstance) {
+                  clientModalInstance = new bootstrap.Modal(clientModal);
+                }
+                clientModalInstance.show();
+              } catch (error) {
+                console.error("Error al mostrar modal de edición:", error);
+                showAlert('danger', 'Error al mostrar modal de edición', 5000);
+              }
+            } else {
+              console.error("Modal de edición no encontrado");
+              showAlert('danger', 'El modal de edición no está disponible', 5000);
+            }
           });
         }
         
         const viewInstallationsBtn = document.getElementById('viewInstallationsFromDetailsBtn');
         if (viewInstallationsBtn) {
           viewInstallationsBtn.addEventListener('click', () => {
-            // Cerrar modal de detalles
-            const detailsModal = bootstrap.Modal.getInstance(document.getElementById('clientDetailsModal'));
-            detailsModal.hide();
+            // Cerrar modal de detalles de forma segura
+            try {
+              const detailsModal = document.getElementById('clientDetailsModal');
+              const modalInstance = bootstrap.Modal.getInstance(detailsModal);
+              if (modalInstance) {
+                modalInstance.hide();
+              } else {
+                // Si no se puede obtener la instancia, intentar cerrar manualmente
+                detailsModal.style.display = 'none';
+                detailsModal.classList.remove('show');
+                document.body.classList.remove('modal-open');
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) {
+                  backdrop.remove();
+                }
+              }
+            } catch (error) {
+              console.error('Error al cerrar modal de detalles:', error);
+            }
             
             // Cambiar a la sección de instalaciones y filtrar por cliente
             const installationsLink = document.querySelector('[data-section="installations"]');
@@ -540,18 +624,57 @@ function setupDashboardEvents() {
           });
         }
         
-        // Mostrar modal
-        const modal = new bootstrap.Modal(document.getElementById('clientDetailsModal'));
-        modal.show();
-        
-        // Eliminar modal cuando se cierre
-        document.getElementById('clientDetailsModal').addEventListener('hidden.bs.modal', function() {
-          this.remove();
-        });
+        // Mostrar modal de forma segura
+        try {
+          const modalElement = document.getElementById('clientDetailsModal');
+          const modal = new bootstrap.Modal(modalElement);
+          modal.show();
+          
+          // Eliminar modal cuando se cierre
+          modalElement.addEventListener('hidden.bs.modal', function() {
+            this.remove();
+          });
+        } catch (error) {
+          console.error('Error detallado al mostrar modal de detalles:', error);
+          showAlert('danger', 'Error al mostrar detalles del cliente. Vea la consola para más información.', 5000);
+          
+          // Intento alternativo
+          const modalElement = document.getElementById('clientDetailsModal');
+          if (modalElement) {
+            modalElement.style.display = 'block';
+            modalElement.classList.add('show');
+            document.body.classList.add('modal-open');
+            
+            // Crear backdrop manualmente si es necesario
+            if (!document.querySelector('.modal-backdrop')) {
+              const backdrop = document.createElement('div');
+              backdrop.className = 'modal-backdrop fade show';
+              document.body.appendChild(backdrop);
+            }
+            
+            // Configurar cierre manual
+            const closeButtons = modalElement.querySelectorAll('[data-bs-dismiss="modal"]');
+            closeButtons.forEach(btn => {
+              btn.addEventListener('click', function() {
+                modalElement.style.display = 'none';
+                modalElement.classList.remove('show');
+                document.body.classList.remove('modal-open');
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) {
+                  backdrop.remove();
+                }
+                // Eliminar el modal del DOM
+                setTimeout(() => {
+                  modalElement.remove();
+                }, 150);
+              });
+            });
+          }
+        }
         
       } catch (error) {
-        console.error('Error al mostrar detalles del cliente:', error);
-        showAlert('danger', `Error al mostrar detalles del cliente: ${error.message || 'Error desconocido'}`);
+        console.error('Error detallado al mostrar detalles del cliente:', error);
+        showAlert('danger', `Error al mostrar detalles del cliente: ${error.message || 'Error desconocido'}`, 5000);
       }
     });
   });
@@ -567,26 +690,110 @@ function setupDashboardEvents() {
   });
 }
 
-// Obtener color para el badge según los días restantes
-function getBadgeColor(days) {
-  if (days <= 3) return 'danger';
-  if (days <= 7) return 'warning';
-  if (days <= 15) return 'info';
-  return 'secondary';
-}
-
-// Formatear fecha - Versión segura
-function formatDate(dateString) {
-  if (!dateString) return '';
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    return date.toLocaleDateString();
-  } catch (error) {
-    console.error('Error al formatear fecha:', error);
-    return '';
+// Verificar disponibilidad de Bootstrap
+function verifyBootstrapAvailability() {
+  if (typeof bootstrap === 'undefined') {
+    console.error("Bootstrap no está disponible. Esto causará problemas con los modales");
+    showAlert('warning', 'Se detectó un problema con Bootstrap. Algunas funcionalidades pueden no estar disponibles.', 7000);
+    return false;
   }
+  return true;
 }
 
-// Exportar funciones
-window.loadDashboard = loadDashboard;
+// Asegurarse de que la función setupClientSaveButton existe
+function setupClientSaveButton() {
+  // Primero, obtener el botón
+  const saveClientBtn = document.getElementById('saveClientBtn');
+  if (!saveClientBtn) {
+    console.error("Botón de guardar cliente no encontrado");
+    return;
+  }
+  
+  // Quitar todos los event listeners existentes
+  const newSaveBtn = saveClientBtn.cloneNode(true);
+  saveClientBtn.parentNode.replaceChild(newSaveBtn, saveClientBtn);
+  
+  // Agregar nuevo event listener
+  newSaveBtn.addEventListener('click', async function() {
+    try {
+      // Deshabilitar botón mientras se procesa
+      newSaveBtn.disabled = true;
+      const originalText = newSaveBtn.innerHTML;
+      newSaveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+      
+      // Obtener datos del formulario
+      const clientForm = document.getElementById('clientForm');
+      if (!clientForm) {
+        throw new Error("Formulario de cliente no encontrado");
+      }
+      
+      if (!clientForm.checkValidity()) {
+        clientForm.reportValidity();
+        newSaveBtn.disabled = false;
+        newSaveBtn.innerHTML = originalText;
+        return;
+      }
+      
+      const clientId = document.getElementById('clientId').value;
+      const name = document.getElementById('clientName').value;
+      const phone = document.getElementById('clientPhone').value;
+      const email = document.getElementById('clientEmail').value;
+      const notes = document.getElementById('clientNotes').value;
+      
+      // Crear objeto de cliente
+      const client = {
+        id: clientId || undefined,
+        name,
+        phone,
+        email,
+        notes
+      };
+      
+      console.log('Guardando cliente:', client);
+      
+       // Enviar al backend
+      let result;
+      if (clientId) {
+        result = await window.api.updateClient(client);
+      } else {
+        result = await window.api.addClient(client);
+      }
+      
+      if (result) {
+        showAlert('success', clientId ? 'Cliente actualizado correctamente' : 'Cliente agregado correctamente');
+        
+        // Cerrar modal de forma segura
+        try {
+          const clientModal = document.getElementById('clientModal');
+          const modalInstance = bootstrap.Modal.getInstance(clientModal);
+          if (modalInstance) {
+            modalInstance.hide();
+          } else {
+            // Si no se puede obtener la instancia, intentar cerrar manualmente
+            clientModal.style.display = 'none';
+            clientModal.classList.remove('show');
+            document.body.classList.remove('modal-open');
+            const backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) {
+              backdrop.remove();
+            }
+          }
+        } catch (error) {
+          console.error('Error al cerrar modal:', error);
+        }
+        
+        // Recargar datos
+        loadDashboard();
+      } else {
+        throw new Error('Error al guardar cliente');
+      }
+    } catch (error) {
+      console.error('Error al guardar cliente:', error);
+      showAlert('danger', `Error al guardar cliente: ${error.message || 'Error desconocido'}`);
+    } finally {
+      // Restaurar botón
+      newSaveBtn.disabled = false;
+      newSaveBtn.innerHTML = originalText;
+    }
+  });
+}

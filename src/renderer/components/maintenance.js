@@ -1,5 +1,3 @@
-// Gestión de mantenimientos - Versión corregida
-
 // Cargar la sección de mantenimientos
 async function loadMaintenance() {
   const maintenanceSection = document.getElementById('maintenance-section');
@@ -171,7 +169,7 @@ function renderClientOptions(clients) {
   }).join('');
 }
 
-// Renderizar tabla de mantenimientos - Versión corregida segura
+// Renderizar tabla de mantenimientos - Versión corregida para mostrar fechas correctamente
 function renderMaintenanceTable(maintenanceList, installations) {
   if (!maintenanceList || !Array.isArray(maintenanceList) || maintenanceList.length === 0) {
     return '';
@@ -189,7 +187,7 @@ function renderMaintenanceTable(maintenanceList, installations) {
       if (installation && installation.components && Array.isArray(installation.components)) {
         const component = installation.components.find(c => c && c.id === maint.componentId);
         if (component && component.lastMaintenanceDate) {
-          lastMaintenanceDate = formatDate(component.lastMaintenanceDate);
+          lastMaintenanceDate = formatDateCorrectly(component.lastMaintenanceDate);
         }
       }
     }
@@ -197,7 +195,7 @@ function renderMaintenanceTable(maintenanceList, installations) {
     const clientName = maint.clientName || 'Cliente no encontrado';
     const componentName = maint.componentName || 'Componente no encontrado';
     const address = maint.address || 'Sin dirección';
-    const nextMaintenanceDate = maint.nextMaintenanceDate || '';
+    const nextMaintenanceDate = formatDateCorrectly(maint.nextMaintenanceDate);
     const daysLeft = maint.daysLeft || 0;
     const clientId = maint.clientId || '';
     const installationId = maint.installationId || '';
@@ -212,7 +210,7 @@ function renderMaintenanceTable(maintenanceList, installations) {
         <td>${componentName}</td>
         <td>${address}</td>
         <td>${lastMaintenanceDate}</td>
-        <td>${formatDate(nextMaintenanceDate)}</td>
+        <td>${nextMaintenanceDate}</td>
         <td>
           <span class="badge bg-${getBadgeColor(daysLeft)}">${daysLeft} días</span>
         </td>
@@ -229,7 +227,7 @@ function renderMaintenanceTable(maintenanceList, installations) {
                     data-client-phone="${clientPhone}"
                     data-component="${componentName}"
                     data-address="${address}"
-                    data-date="${nextMaintenanceDate}">
+                    data-date="${maint.nextMaintenanceDate}">
               <i class="bi bi-whatsapp"></i>
             </button>
           </div>
@@ -254,6 +252,26 @@ function getBadgeColor(days) {
   return 'secondary';
 }
 
+// Función mejorada para formatear fechas correctamente
+function formatDateCorrectly(dateString) {
+  if (!dateString) return '-';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    
+    // Formatear como DD/MM/YYYY
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // Los meses en JS son 0-11
+    const year = date.getFullYear();
+    
+    return `${day}/${month}/${year}`;
+  } catch (error) {
+    console.error("Error al formatear fecha:", error);
+    return '-';
+  }
+}
+
 // Configurar eventos para la sección de mantenimientos - Versión simplificada
 function setupMaintenanceEvents() {
   // Filtro por cliente
@@ -276,29 +294,258 @@ function setupMaintenanceEvents() {
         const installationId = button.getAttribute('data-installation-id');
         const componentId = button.getAttribute('data-component-id');
         
-        alert(`Registrando mantenimiento para la instalación ${installationId}, componente ${componentId}`);
+        // Mostrar modal de registro de mantenimiento
+        showMaintenanceRegistrationModal(installationId, componentId);
       });
     });
   }
   
-  // Botones para enviar WhatsApp - Simplificado para pruebas
+  // Botones para enviar WhatsApp
   const whatsappButtons = document.querySelectorAll('.send-maintenance-whatsapp-btn');
   if (whatsappButtons && whatsappButtons.length > 0) {
     whatsappButtons.forEach(button => {
       button.addEventListener('click', () => {
+        const clientId = button.getAttribute('data-client-id');
         const clientName = button.getAttribute('data-client-name');
-        alert(`Enviando WhatsApp a ${clientName}`);
+        const clientPhone = button.getAttribute('data-client-phone');
+        const component = button.getAttribute('data-component');
+        const address = button.getAttribute('data-address');
+        const date = button.getAttribute('data-date');
+        
+        if (!clientPhone) {
+          showAlert('warning', `El cliente ${clientName} no tiene un número de teléfono registrado`);
+          return;
+        }
+        
+        // Mostrar modal de WhatsApp
+        showWhatsAppModal(clientId, clientName, clientPhone, component, address, date);
       });
     });
   }
   
-  // Botón para notificar a todos - Simplificado para pruebas
+  // Botón para notificar a todos
   const notifyAllButton = document.getElementById('notifyAllButton');
   if (notifyAllButton) {
     notifyAllButton.addEventListener('click', () => {
-      alert('Enviando notificaciones a todos los clientes');
+      showNotifyAllModal();
     });
   }
+}
+
+// Función para mostrar el modal de registro de mantenimiento
+function showMaintenanceRegistrationModal(installationId, componentId) {
+  // Verificar si ya existe el modal y eliminarlo
+  const existingModal = document.getElementById('registerMaintenanceModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // Crear modal HTML
+  const modalHtml = `
+    <div class="modal fade" id="registerMaintenanceModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Registrar Mantenimiento</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="registerMaintenanceForm">
+              <input type="hidden" id="maintenance-installation-id" value="${installationId}">
+              <input type="hidden" id="maintenance-component-id" value="${componentId}">
+              
+              <div class="mb-3">
+                <label for="maintenance-date" class="form-label">Fecha de mantenimiento</label>
+                <input type="date" class="form-control" id="maintenance-date" value="${new Date().toISOString().split('T')[0]}" required>
+              </div>
+              
+              <div class="mb-3">
+                <label for="maintenance-notes" class="form-label">Notas</label>
+                <textarea class="form-control" id="maintenance-notes" rows="3" placeholder="Observaciones o detalles del mantenimiento realizado"></textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="save-maintenance-btn">Registrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar al DOM
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHtml;
+  document.body.appendChild(tempDiv.firstChild);
+  
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('registerMaintenanceModal'));
+  modal.show();
+  
+  // Configurar botón de guardar
+  const saveButton = document.getElementById('save-maintenance-btn');
+  if (saveButton) {
+    saveButton.addEventListener('click', async () => {
+      try {
+        // Deshabilitar botón
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+        
+        // Obtener datos del formulario
+        const maintenanceDate = document.getElementById('maintenance-date').value;
+        const notes = document.getElementById('maintenance-notes').value;
+        
+        // Enviar al backend
+        const result = await window.api.registerMaintenance({
+          installationId: installationId,
+          componentId: componentId,
+          maintenanceDate: maintenanceDate,
+          notes: notes
+        });
+        
+        if (result.success) {
+          // Cerrar modal
+          modal.hide();
+          
+          // Mostrar mensaje de éxito
+          showAlert('success', 'Mantenimiento registrado correctamente');
+          
+          // Recargar lista de mantenimientos
+          loadMaintenance();
+        } else {
+          throw new Error(result.message || 'Error al registrar mantenimiento');
+        }
+      } catch (error) {
+        console.error('Error al registrar mantenimiento:', error);
+        showAlert('danger', `Error al registrar mantenimiento: ${error.message || 'Error desconocido'}`);
+        
+        // Restaurar botón
+        saveButton.disabled = false;
+        saveButton.innerHTML = 'Registrar';
+      }
+    });
+  }
+  
+  // Eliminar modal del DOM cuando se cierre
+  document.getElementById('registerMaintenanceModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+// Función para mostrar el modal de WhatsApp
+function showWhatsAppModal(clientId, clientName, clientPhone, component, address, date) {
+  // Crear mensaje predeterminado
+  const formattedDate = formatDateCorrectly(date);
+  const defaultMessage = `Estimado/a ${clientName},\n\nLe recordamos que su ${component} en ${address} requiere mantenimiento programado para el día ${formattedDate}.\n\nPor favor, contáctenos para agendar una visita.\n\nGracias,\nServicio Técnico`;
+  
+  // Verificar si ya existe el modal y eliminarlo
+  const existingModal = document.getElementById('whatsAppModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // Crear modal HTML
+  const modalHtml = `
+    <div class="modal fade" id="whatsAppModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Enviar Notificación por WhatsApp</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="whatsAppForm">
+              <div class="mb-3">
+                <label class="form-label">Cliente</label>
+                <input type="text" class="form-control" value="${clientName}" readonly>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Teléfono</label>
+                <input type="text" class="form-control" value="${clientPhone}" readonly>
+              </div>
+              
+              <div class="mb-3">
+                <label for="whatsapp-message" class="form-label">Mensaje</label>
+                <textarea class="form-control" id="whatsapp-message" rows="6">${defaultMessage}</textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-success" id="send-whatsapp-btn">
+              <i class="bi bi-whatsapp me-1"></i> Enviar Mensaje
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar al DOM
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHtml;
+  document.body.appendChild(tempDiv.firstChild);
+  
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('whatsAppModal'));
+  modal.show();
+  
+  // Configurar botón de enviar
+  const sendButton = document.getElementById('send-whatsapp-btn');
+  if (sendButton) {
+    sendButton.addEventListener('click', async () => {
+      try {
+        // Deshabilitar botón
+        sendButton.disabled = true;
+        sendButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Enviando...';
+        
+        // Obtener mensaje
+        const message = document.getElementById('whatsapp-message').value;
+        
+        // Verificar si WhatsApp está conectado
+        const isConnected = await window.api.isWhatsAppConnected();
+        
+        if (!isConnected) {
+          throw new Error('WhatsApp no está conectado. Por favor, conecte WhatsApp primero.');
+        }
+        
+        // Enviar mensaje
+        const result = await window.api.sendWhatsAppMessage({
+          phone: clientPhone,
+          message: message
+        });
+        
+        if (result.success) {
+          // Cerrar modal
+          modal.hide();
+          
+          // Mostrar mensaje de éxito
+          showAlert('success', 'Mensaje enviado correctamente');
+        } else {
+          throw new Error(result.message || 'Error al enviar mensaje');
+        }
+      } catch (error) {
+        console.error('Error al enviar mensaje WhatsApp:', error);
+        showAlert('danger', `Error al enviar mensaje: ${error.message || 'Error desconocido'}`);
+        
+        // Restaurar botón
+        sendButton.disabled = false;
+        sendButton.innerHTML = '<i class="bi bi-whatsapp me-1"></i> Enviar Mensaje';
+      }
+    });
+  }
+  
+  // Eliminar modal del DOM cuando se cierre
+  document.getElementById('whatsAppModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+// Función para mostrar modal de notificación a todos
+function showNotifyAllModal() {
+  alert('Esta función enviará notificaciones a todos los clientes con mantenimientos pendientes. Implementación pendiente.');
 }
 
 // Filtrar mantenimientos según los criterios seleccionados
@@ -329,18 +576,48 @@ function filterMaintenance() {
   });
 }
 
-// Formatear fecha - Versión segura
-function formatDate(dateString) {
-  if (!dateString) return '-';
-  
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString();
-  } catch (error) {
-    console.error("Error al formatear fecha:", error);
-    return '-';
+// Función para mostrar alertas
+function showAlert(type, message, duration = 5000) {
+  if (typeof window.showAlert === 'function') {
+    window.showAlert(type, message, duration);
+    return;
   }
+  
+  // Implementación alternativa si la función global no existe
+  const alertContainer = document.getElementById('alert-container');
+  if (!alertContainer) {
+    // Crear contenedor de alertas si no existe
+    const container = document.createElement('div');
+    container.id = 'alert-container';
+    container.className = 'position-fixed top-0 start-50 translate-middle-x p-3';
+    container.style.zIndex = '9999';
+    document.body.appendChild(container);
+  }
+  
+  const alertElement = document.createElement('div');
+  alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+  alertElement.role = 'alert';
+  alertElement.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+  
+  const container = document.getElementById('alert-container') || document.body;
+  container.appendChild(alertElement);
+  
+  // Auto-eliminar después de la duración especificada
+  setTimeout(() => {
+    if (alertElement.parentNode) {
+      try {
+        // Intentar usar bootstrap para cerrar
+        const bsAlert = new bootstrap.Alert(alertElement);
+        bsAlert.close();
+      } catch (e) {
+        // Si falla, eliminar manualmente
+        alertElement.remove();
+      }
+    }
+  }, duration);
 }
 
 // Exportar funciones

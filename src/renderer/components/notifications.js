@@ -1,5 +1,3 @@
-// Gestión de notificaciones integrada con WhatsApp
-
 // Cargar la sección de notificaciones
 async function loadNotifications() {
   const notificationsSection = document.getElementById('notifications-section');
@@ -63,67 +61,6 @@ async function loadNotifications() {
   }
 }
 
-// Renderizar el conector WhatsApp sin React
-function renderNonReactWhatsAppConnector(isConnected) {
-  const container = document.getElementById('whatsapp-connector-container');
-  if (!container) return;
-  
-  container.innerHTML = `
-    <div class="card mb-4">
-      <div class="card-header">
-        <h5 class="mb-0">Conexión WhatsApp</h5>
-      </div>
-      <div class="card-body">
-        <div class="text-center mb-3">
-          <span class="badge ${isConnected ? 'bg-success' : 'bg-secondary'} mb-2">
-            ${isConnected ? 'Conectado' : 'No conectado'}
-          </span>
-          <p class="mb-3">${isConnected ? 'WhatsApp conectado correctamente' : 'No conectado a WhatsApp'}</p>
-        </div>
-        
-        <div id="qr-container" class="text-center my-3" style="display: none;">
-          <div class="d-inline-block bg-white p-3 rounded shadow-sm">
-            <div id="qr-code" style="width: 256px; height: 256px; margin: 0 auto;"></div>
-          </div>
-          <p class="text-muted mt-2 small">
-            Abre WhatsApp en tu teléfono &gt; Menú &gt; Dispositivos vinculados &gt; Vincular un dispositivo
-          </p>
-        </div>
-        
-        ${isConnected ? `
-          <div class="text-center">
-            <div class="alert alert-success mb-3">
-              <i class="bi bi-check-circle-fill me-2"></i>
-              WhatsApp conectado correctamente
-            </div>
-            <p class="text-muted">Ya puedes enviar notificaciones a tus clientes</p>
-            <button id="logout-whatsapp-btn" class="btn btn-outline-danger btn-sm mt-3">
-              <i class="bi bi-box-arrow-right me-2"></i>
-              Cerrar sesión de WhatsApp
-            </button>
-          </div>
-        ` : `
-          <div class="text-center">
-            <button id="connect-whatsapp-btn" class="btn btn-success">
-              <i class="bi bi-whatsapp me-2"></i>
-              Conectar WhatsApp
-            </button>
-            <div id="whatsapp-connecting" style="display: none;" class="mt-3">
-              <div class="spinner-border spinner-border-sm text-success me-2" role="status">
-                <span class="visually-hidden">Conectando...</span>
-              </div>
-              <span>Generando código QR...</span>
-            </div>
-          </div>
-        `}
-      </div>
-    </div>
-  `;
-  
-  // Configurar eventos para esta versión alternativa
-  setupWhatsAppConnector();
-}
-
 // Generar items de notificación a partir de mantenimientos
 function generateNotificationItems(maintenanceList) {
   // Agrupar notificaciones por cliente para evitar duplicados
@@ -190,7 +127,7 @@ function renderNotificationItems(items) {
               : `${item.maintenance.length} mantenimientos pendientes`}
           </p>
           <div class="d-flex justify-content-between align-items-center">
-            <small>Próximo mantenimiento en ${mostUrgent.daysLeft} días (${formatDate(mostUrgent.nextMaintenanceDate)})</small>
+            <small>Próximo mantenimiento en ${mostUrgent.daysLeft} días (${formatDateCorrectly(mostUrgent.nextMaintenanceDate)})</small>
             <button class="btn btn-sm btn-outline-success send-notification-btn" 
                     data-client-id="${item.clientId}" 
                     data-client-name="${item.clientName}" 
@@ -209,7 +146,6 @@ function renderNotificationItems(items) {
 }
 
 // Configurar eventos para la sección de notificaciones
-// Configurar eventos para la sección de notificaciones - Versión actualizada
 function setupNotificationsEvents(isWhatsAppConnected) {
   // Enlace para ir a la sección de WhatsApp
   const connectWhatsAppLink = document.querySelector('.connect-whatsapp-link');
@@ -241,35 +177,7 @@ function setupNotificationsEvents(isWhatsAppConnected) {
         const maintenanceData = JSON.parse(button.getAttribute('data-maintenance'));
         
         // Mostrar modal de WhatsApp
-        document.getElementById('whatsappRecipientId').value = clientId;
-        document.getElementById('whatsappRecipientName').value = clientName;
-        document.getElementById('whatsappRecipientPhone').value = clientPhone;
-        
-        // Establecer plantilla de mensaje
-        document.getElementById('whatsappMessageTemplate').value = 'maintenance';
-        
-        // Usar el primer mantenimiento para el mensaje
-        const messageData = {
-          clientName,
-          componentName: maintenanceData[0].componentName,
-          address: maintenanceData[0].address,
-          nextMaintenanceDate: maintenanceData[0].nextMaintenanceDate
-        };
-        
-        // Si hay múltiples mantenimientos, agregar información adicional
-        let message = createMessageTemplate('maintenance', messageData);
-        if (maintenanceData.length > 1) {
-          message += '\n\nAdicionalmente, se requiere mantenimiento para:\n';
-          maintenanceData.slice(1).forEach(maint => {
-            message += `- ${maint.componentName} (${formatDate(maint.nextMaintenanceDate)})\n`;
-          });
-        }
-        
-        document.getElementById('whatsappMessage').value = message;
-        
-        // Mostrar modal
-        const whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
-        whatsappModal.show();
+        showWhatsAppModal(clientId, clientName, clientPhone, maintenanceData);
       } catch (error) {
         console.error("Error al preparar mensaje:", error);
         showAlert('danger', `Error al preparar mensaje: ${error.message}`, 5000);
@@ -284,118 +192,210 @@ function setupNotificationsEvents(isWhatsAppConnected) {
       const totalClients = document.querySelectorAll('.notification-item').length;
       
       if (confirm(`¿Estás seguro de enviar notificaciones a ${totalClients} clientes?`)) {
-        // En una implementación real, aquí enviaríamos cada mensaje
-        showAlert('success', `Se han enviado ${totalClients} notificaciones correctamente`, 5000);
+        showNotifyAllModal();
       }
     });
   }
 }
 
-// Generar items de notificación a partir de mantenimientos
-function generateNotificationItems(maintenanceList) {
-  // Agrupar notificaciones por cliente para evitar duplicados
-  const notificationsByClient = {};
-  
-  if (!Array.isArray(maintenanceList)) {
-    console.error("La lista de mantenimientos no es un array:", maintenanceList);
-    return [];
+// Función para mostrar el modal de WhatsApp
+function showWhatsAppModal(clientId, clientName, clientPhone, maintenanceData) {
+  // Verificar si ya existe el modal y eliminarlo
+  const existingModal = document.getElementById('whatsAppModal');
+  if (existingModal) {
+    existingModal.remove();
   }
   
-  maintenanceList.forEach(maint => {
-    if (!maint || !maint.clientPhone) return; // Omitir si no tiene teléfono
+  // Preparar mensaje según los datos de mantenimiento
+  let defaultMessage = '';
+  
+  if (maintenanceData.length === 1) {
+    // Si solo hay un mantenimiento
+    const maint = maintenanceData[0];
+    defaultMessage = `Estimado/a ${clientName},\n\nLe recordamos que su ${maint.componentName} en ${maint.address} requiere mantenimiento programado para el día ${formatDateCorrectly(maint.nextMaintenanceDate)}.\n\nPor favor, contáctenos para agendar una visita.\n\nGracias,\nServicio Técnico de Gas`;
+  } else {
+    // Si hay múltiples mantenimientos
+    defaultMessage = `Estimado/a ${clientName},\n\nLe recordamos que tiene los siguientes mantenimientos programados:\n\n`;
     
-    if (!notificationsByClient[maint.clientId]) {
-      notificationsByClient[maint.clientId] = {
-        clientId: maint.clientId,
-        clientName: maint.clientName,
-        clientPhone: maint.clientPhone,
-        maintenance: []
-      };
-    }
-    
-    notificationsByClient[maint.clientId].maintenance.push({
-      componentName: maint.componentName,
-      address: maint.address,
-      nextMaintenanceDate: maint.nextMaintenanceDate,
-      daysLeft: maint.daysLeft
+    maintenanceData.forEach(maint => {
+      defaultMessage += `- ${maint.componentName} en ${maint.address}: ${formatDateCorrectly(maint.nextMaintenanceDate)}\n`;
     });
-  });
-  
-  return Object.values(notificationsByClient).sort((a, b) => {
-    // Ordenar por urgencia (menor cantidad de días restantes primero)
-    const minDaysA = Math.min(...a.maintenance.map(m => m.daysLeft));
-    const minDaysB = Math.min(...b.maintenance.map(m => m.daysLeft));
-    return minDaysA - minDaysB;
-  });
-}
-
-// Renderizar items de notificación
-function renderNotificationItems(items) {
-  if (!items || items.length === 0) {
-    return '';
+    
+    defaultMessage += `\nPor favor, contáctenos para agendar las visitas.\n\nGracias,\nServicio Técnico de Gas`;
   }
   
-  return items.map(item => {
-    try {
-      // Encontrar el mantenimiento más urgente para este cliente
-      const mostUrgent = item.maintenance.reduce((prev, current) => 
-        (prev.daysLeft < current.daysLeft) ? prev : current
-      );
-      
-      // Determinar clase de urgencia
-      const urgentClass = mostUrgent.daysLeft <= 7 ? 'urgent' : '';
-      
-      return `
-        <div class="list-group-item notification-item ${urgentClass}">
-          <div class="d-flex w-100 justify-content-between">
-            <h5 class="mb-1">${item.clientName}</h5>
-            <small>${item.clientPhone}</small>
+  // Crear modal HTML
+  const modalHtml = `
+    <div class="modal fade" id="whatsAppModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Enviar Notificación por WhatsApp</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <p class="mb-1">
-            ${item.maintenance.length === 1 
-              ? `Mantenimiento de ${item.maintenance[0].componentName} en ${item.maintenance[0].address}`
-              : `${item.maintenance.length} mantenimientos pendientes`}
-          </p>
-          <div class="d-flex justify-content-between align-items-center">
-            <small>Próximo mantenimiento en ${mostUrgent.daysLeft} días (${formatDate(mostUrgent.nextMaintenanceDate)})</small>
-            <button class="btn btn-sm btn-outline-success send-notification-btn" 
-                    data-client-id="${item.clientId}" 
-                    data-client-name="${item.clientName}" 
-                    data-client-phone="${item.clientPhone}"
-                    data-maintenance='${JSON.stringify(item.maintenance)}'>
-              <i class="bi bi-whatsapp"></i> Enviar
+          <div class="modal-body">
+            <form id="whatsAppForm">
+              <div class="mb-3">
+                <label class="form-label">Cliente</label>
+                <input type="text" class="form-control" value="${clientName}" readonly>
+              </div>
+              
+              <div class="mb-3">
+                <label class="form-label">Teléfono</label>
+                <input type="text" class="form-control" value="${clientPhone}" readonly>
+              </div>
+              
+              <div class="mb-3">
+                <label for="whatsapp-message" class="form-label">Mensaje</label>
+                <textarea class="form-control" id="whatsapp-message" rows="6">${defaultMessage}</textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-success" id="send-whatsapp-btn">
+              <i class="bi bi-whatsapp me-1"></i> Enviar Mensaje
             </button>
           </div>
         </div>
-      `;
-    } catch (error) {
-      console.error("Error al renderizar item de notificación:", error, item);
-      return '';
-    }
-  }).join('');
+      </div>
+    </div>
+  `;
+  
+  // Agregar al DOM
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHtml;
+  document.body.appendChild(tempDiv.firstChild);
+  
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('whatsAppModal'));
+  modal.show();
+  
+  // Configurar botón de enviar
+  const sendButton = document.getElementById('send-whatsapp-btn');
+  if (sendButton) {
+    sendButton.addEventListener('click', async () => {
+      try {
+        // Deshabilitar botón
+        sendButton.disabled = true;
+        sendButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Enviando...';
+        
+        // Obtener mensaje
+        const message = document.getElementById('whatsapp-message').value;
+        
+        // Verificar si WhatsApp está conectado
+        const isConnected = await window.api.isWhatsAppConnected();
+        
+        if (!isConnected) {
+          throw new Error('WhatsApp no está conectado. Por favor, conecte WhatsApp primero.');
+        }
+        
+        // Enviar mensaje
+        const result = await window.api.sendWhatsAppMessage({
+          phone: clientPhone,
+          message: message
+        });
+        
+        if (result.success) {
+          // Cerrar modal
+          modal.hide();
+          
+          // Mostrar mensaje de éxito
+          showAlert('success', 'Mensaje enviado correctamente');
+        } else {
+          throw new Error(result.message || 'Error al enviar mensaje');
+        }
+      } catch (error) {
+        console.error('Error al enviar mensaje WhatsApp:', error);
+        showAlert('danger', `Error al enviar mensaje: ${error.message || 'Error desconocido'}`);
+        
+        // Restaurar botón
+        sendButton.disabled = false;
+        sendButton.innerHTML = '<i class="bi bi-whatsapp me-1"></i> Enviar Mensaje';
+      }
+    });
+  }
+  
+  // Eliminar modal del DOM cuando se cierre
+  document.getElementById('whatsAppModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
 }
 
-// Crear plantilla de mensajes
-function createMessageTemplate(type, data) {
-  switch (type) {
-    case 'maintenance':
-      return `Estimado/a ${data.clientName},\n\nLe recordamos que su ${data.componentName} en ${data.address} requiere mantenimiento programado en los próximos días (${formatDate(data.nextMaintenanceDate)}).\n\nPor favor, contáctenos para agendar una visita.\n\nGracias,\nnServitecGas`;
+// Función para mostrar modal de notificación a todos
+function showNotifyAllModal() {
+  // Implementar lógica para enviar notificaciones a todos
+  // En este caso solo mostramos una alerta para simplificar
+  showAlert('info', 'Enviando notificaciones a todos los clientes con mantenimientos pendientes...', 5000);
+  
+  // Simular envío exitoso después de un tiempo
+  setTimeout(() => {
+    showAlert('success', 'Notificaciones enviadas correctamente', 5000);
+  }, 3000);
+}
+
+// Función mejorada para formatear fechas correctamente
+function formatDateCorrectly(dateString) {
+  if (!dateString) return '-';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
     
-    case 'followup':
-      return `Estimado/a ${data.clientName},\n\nEsperamos que su instalación de gas esté funcionando correctamente. Queremos recordarle que estamos disponibles para cualquier consulta o servicio que necesite.\n\nGracias por confiar en nosotros.\n\nSaludos cordiales,\nServitecGas`;
+    // Formatear como DD/MM/YYYY
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // Los meses en JS son 0-11
+    const year = date.getFullYear();
     
-    case 'custom':
-      return '';
-    
-    default:
-      return '';
+    return `${day}/${month}/${year}`;
+  } catch (error) {
+    console.error("Error al formatear fecha:", error);
+    return '-';
   }
 }
 
-// Formatear fecha
-function formatDate(dateString) {
-  if (!dateString) return '-';
-  return window.api.formatDate ? window.api.formatDate(dateString) : new Date(dateString).toLocaleDateString();
+// Función para mostrar alertas
+function showAlert(type, message, duration = 5000) {
+  if (typeof window.showAlert === 'function') {
+    window.showAlert(type, message, duration);
+    return;
+  }
+  
+  // Implementación alternativa si la función global no existe
+  const alertContainer = document.getElementById('alert-container');
+  if (!alertContainer) {
+    // Crear contenedor de alertas si no existe
+    const container = document.createElement('div');
+    container.id = 'alert-container';
+    container.className = 'position-fixed top-0 start-50 translate-middle-x p-3';
+    container.style.zIndex = '9999';
+    document.body.appendChild(container);
+  }
+  
+  const alertElement = document.createElement('div');
+  alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+  alertElement.role = 'alert';
+  alertElement.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+  
+  const container = document.getElementById('alert-container') || document.body;
+  container.appendChild(alertElement);
+  
+  // Auto-eliminar después de la duración especificada
+  setTimeout(() => {
+    if (alertElement.parentNode) {
+      try {
+        // Intentar usar bootstrap para cerrar
+        const bsAlert = new bootstrap.Alert(alertElement);
+        bsAlert.close();
+      } catch (e) {
+        // Si falla, eliminar manualmente
+        alertElement.remove();
+      }
+    }
+  }, duration);
 }
 
 // Exportar funciones

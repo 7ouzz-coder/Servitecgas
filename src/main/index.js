@@ -5,6 +5,7 @@ const AuthService = require('./services/auth'); // Servicio de autenticación lo
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const errorHandler = require('./utils/error-handler');
+const azureConfig = require('./azure/config');
 
 // Cargar variables de entorno
 require('dotenv').config();
