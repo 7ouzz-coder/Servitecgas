@@ -9,6 +9,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    if (window.api) {
+      await initializeWhatsApp();
+      console.log('✅ Integración con WhatsApp inicializada correctamente');
+    } else {
+      console.error('❌ API de Electron no disponible');
+    }
 // Mostrar panel de administración (solo para admin)
 async function showAdminPanel() {
   try {

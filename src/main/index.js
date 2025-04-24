@@ -6,6 +6,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const errorHandler = require('./utils/error-handler');
 const azureConfig = require('./azure/config');
+const { setupWhatsAppIPC } = require('./services/whatsapp-ipc');
 
 // Cargar variables de entorno
 require('dotenv').config();
@@ -664,94 +665,7 @@ function setupIpcHandlers(store) {
   // Manejadores para WhatsApp
   // ============================================================
   
-  ipcMain.handle('send-whatsapp-message', async (event, data) => {
-    // Verificar autenticación
-    if (!authService.checkAuth().isAuthenticated) {
-      return { success: false, message: 'No autenticado' };
-    }
-    
-    try {
-      // Si es una acción de conexión, iniciar el proceso de autenticación de WhatsApp
-      if (data.action === 'connect') {
-        // Esta acción inicia el proceso de autenticación de WhatsApp
-        if (mainWindow) {
-          mainWindow.webContents.send('show-alert', {
-            type: 'info',
-            message: 'Iniciando conexión con WhatsApp...'
-          });
-        }
-        return { success: true, message: 'Iniciando conexión con WhatsApp' };
-      }
-      
-      // Para enviar un mensaje, usamos la función del servicio
-      const result = await sendWhatsAppMessage(data.phone, data.message);
-      return result;
-    } catch (error) {
-      console.error('Error al procesar solicitud de WhatsApp:', error);
-      return { 
-        success: false, 
-        message: `Error en WhatsApp: ${error.message}` 
-      };
-    }
-  });
-  
-  // Verificar si WhatsApp está conectado
-  ipcMain.handle('is-whatsapp-connected', () => {
-    return isWhatsAppConnected();
-  });
-  
-  // Cerrar sesión de WhatsApp
-  ipcMain.handle('logout-whatsapp', async () => {
-    try {
-      return await logoutWhatsApp();
-    } catch (error) {
-      console.error('Error al cerrar sesión de WhatsApp:', error);
-      return {
-        success: false,
-        message: `Error al cerrar sesión: ${error.message}`
-      };
-    }
-  });
-  
-  // Obtener historial de mensajes
-  ipcMain.handle('get-whatsapp-message-history', () => {
-    try {
-      return getMessageHistory();
-    } catch (error) {
-      console.error('Error al obtener historial de mensajes:', error);
-      return [];
-    }
-  });
-  
-  // Nuevas funciones para WhatsApp
-  ipcMain.handle('initialize-whatsapp', async () => {
-    try {
-      // Esta función podría inicializar explícitamente el cliente de WhatsApp
-      // Depende de cómo esté implementado en tu servicio
-      return { success: true, message: 'Cliente WhatsApp inicializado' };
-    } catch (error) {
-      console.error('Error al inicializar WhatsApp:', error);
-      return { 
-        success: false,
-        message: `Error al inicializar WhatsApp: ${error.message}` 
-      };
-    }
-  });
-  
-  ipcMain.handle('get-whatsapp-chats', async () => {
-    try {
-      // Esta función podría obtener la lista de chats
-      // Implementación dependiente de tu servicio de WhatsApp
-      return { success: true, chats: [] };
-    } catch (error) {
-      console.error('Error al obtener chats de WhatsApp:', error);
-      return { 
-        success: false,
-        message: `Error al obtener chats: ${error.message}`,
-        chats: []
-      };
-    }
-  });
+  setupWhatsAppIPC(whatsappService, mainWindow);
 
   // ============================================================
   // Respaldos y Restauración
