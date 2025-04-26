@@ -111,8 +111,27 @@ app.whenReady().then(async () => {
     // Inicializar servicio de autenticación
     authService = new AuthService(store);
     
-    // Configurar servicio de WhatsApp
+    // Configurar servicio de WhatsApp (una sola vez)
+    const { 
+      setupWhatsAppService, 
+      sendWhatsAppMessage, 
+      isWhatsAppConnected, 
+      logoutWhatsApp,
+      getMessageHistory
+    } = require('./services/whatsapp');
+    
+    // Inicializar el servicio
     setupWhatsAppService(mainWindow);
+    
+    // Configurar IPC para WhatsApp (separado del servicio)
+    const { setupWhatsAppIPC } = require('./services/whatsapp-ipc');
+    const whatsappService = {
+      isWhatsAppConnected,
+      logoutWhatsApp,
+      sendWhatsAppMessage,
+      getMessageHistory
+    };
+    setupWhatsAppIPC(whatsappService, mainWindow);
     
     // Configurar sistema de respaldos automáticos
     setupAutomaticBackup(mainWindow);

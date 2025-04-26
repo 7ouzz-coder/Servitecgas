@@ -1,6 +1,6 @@
 const { recordChange, generateId } = require('./store');
 const { checkUpcomingMaintenance, calculateNextMaintenanceDate } = require('../services/maintenance');
-const { sendWhatsAppMessage } = require('../services/whatsapp');
+const whatsappService = require('../services/whatsapp');
 
 /**
  * Configura los manejadores IPC para operaciones de base de datos
@@ -267,23 +267,40 @@ module.exports = function setupIpcHandlers(ipcMain, store) {
   // ============================================================
   
   // Enviar mensaje de WhatsApp
+  // Verificar conexión de WhatsApp
+  ipcMain.handle('is-whatsapp-connected', () => {
+    console.log('IPC: Verificando estado de WhatsApp');
+    return whatsappService.isConnected();
+  });
+  
+  // Inicializar WhatsApp
+  ipcMain.handle('initialize-whatsapp', () => {
+    console.log('IPC: Iniciando WhatsApp');
+    whatsappService.initializeClient();
+    return { success: true, message: 'Inicialización de WhatsApp iniciada' };
+  });
+  
+  // Enviar mensaje de WhatsApp
   ipcMain.handle('send-whatsapp-message', async (event, messageData) => {
-    try {
-      // Si es una solicitud de conexión, iniciar el proceso de autenticación
-      if (messageData.action === 'connect') {
-        return { success: true, message: 'Iniciando conexión con WhatsApp' };
-      }
-      
-      // Si es un mensaje normal, enviarlo
-      const result = await sendWhatsAppMessage(messageData.phone, messageData.message);
-      return result;
-    } catch (error) {
-      console.error('Error al enviar mensaje de WhatsApp:', error);
-      return { 
-        success: false, 
-        message: error.message 
-      };
+    // Si es una solicitud de conexión, iniciar el proceso de autenticación
+    if (messageData.action === 'connect') {
+      console.log('IPC: Solicitud para iniciar conexión de WhatsApp');
+      whatsappService.initializeClient();
+      return { success: true, message: 'Iniciando conexión con WhatsApp' };
     }
+    
+    // Para enviar un mensaje normal
+    if (!messageData.phone || !messageData.message) {
+      return { success: false, message: 'Número de teléfono y mensaje son obligatorios' };
+    }
+    
+    return await whatsappService.sendMessage(messageData.phone, messageData.message);
+  });
+  
+  // Cerrar sesión de WhatsApp
+  ipcMain.handle('logout-whatsapp', async () => {
+    console.log('IPC: Solicitud para cerrar sesión de WhatsApp');
+    return await whatsappService.logout();
   });
 
   // ============================================================

@@ -6,107 +6,60 @@ const { ipcMain } = require('electron');
  * @param {BrowserWindow} mainWindow - Ventana principal de Electron
  */
 function setupWhatsAppIPC(whatsappService, mainWindow) {
-  // Verificar conexión de WhatsApp
-  ipcMain.handle('is-whatsapp-connected', () => {
-    console.log(`[IPC] Verificando estado de WhatsApp`);
-    const isConnected = whatsappService.isWhatsAppConnected();
-    console.log(`[IPC] Estado de WhatsApp: ${isConnected ? 'Conectado' : 'Desconectado'}`);
-    return isConnected;
-  });
+  console.log(`[IPC] Configurando eventos WhatsApp para la interfaz de usuario`);
 
-  // Inicializar WhatsApp explícitamente
-  ipcMain.handle('initialize-whatsapp', async () => {
-    console.log(`[IPC] Solicitud explícita para inicializar WhatsApp`);
-    try {
-      await whatsappService.initializeWhatsAppClient();
-      return { success: true, message: 'Inicialización de WhatsApp comenzada' };
-    } catch (error) {
-      console.error(`[IPC] Error al inicializar WhatsApp:`, error);
-      return { 
-        success: false, 
-        message: error.message || 'Error al inicializar WhatsApp' 
-      };
-    }
-  });
-
-  // Cerrar sesión de WhatsApp
-  ipcMain.handle('logout-whatsapp', async () => {
-    console.log(`[IPC] Solicitud para cerrar sesión de WhatsApp`);
-    try {
-      const result = await whatsappService.logoutWhatsApp();
-      console.log(`[IPC] Resultado de cierre de sesión:`, result);
-      return result;
-    } catch (error) {
-      console.error(`[IPC] Error al cerrar sesión:`, error);
-      return {
-        success: false,
-        message: error.message || 'Error al cerrar sesión'
-      };
-    }
-  });
-
-  // Enviar mensaje de WhatsApp (incluye acción de conectar)
-  ipcMain.handle('send-whatsapp-message', async (event, messageData) => {
-    try {
-      // Si es una solicitud de conexión, iniciar el proceso de autenticación
-      if (messageData.action === 'connect') {
-        console.log(`[IPC] Solicitud para iniciar conexión de WhatsApp`);
+  // Notificar al frontend cuando esté listo para recibir eventos
+  if (mainWindow) {
+    mainWindow.on('ready-to-show', () => {
+      console.log(`[IPC] Ventana principal lista para recibir eventos WhatsApp`);
+      
+      // Configurar utilidades de prueba para el frontend
+      mainWindow.webContents.executeJavaScript(`
+        console.log('[WhatsApp] Inicializando soporte en el frontend');
         
-        // Notificar al frontend
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('whatsapp-status-changed', {
-            status: 'connecting',
-            message: 'Iniciando conexión con WhatsApp...'
-          });
-        }
-        
-        // Inicializar cliente
-        setTimeout(() => {
-          whatsappService.initializeWhatsAppClient()
-            .catch(error => {
-              console.error(`[IPC] Error al inicializar WhatsApp:`, error);
-              
-              // Notificar error al frontend
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('whatsapp-initialization-failed', {
-                  error: error.message || 'Error desconocido'
-                });
-              }
-            });
-        }, 500);
-        
-        return { 
-          success: true, 
-          message: 'Iniciando conexión con WhatsApp' 
+        // Función de utilidad para pruebas desde la consola del navegador
+        window.testWhatsApp = function() {
+          console.log('[WhatsApp] Ejecutando prueba desde frontend');
+          if (window.api && window.api.sendWhatsAppMessage) {
+            console.log('[WhatsApp] Enviando mensaje de prueba');
+            window.api.sendWhatsAppMessage({ action: 'connect' })
+              .then(result => console.log('[WhatsApp] Respuesta:', result))
+              .catch(err => console.error('[WhatsApp] Error:', err));
+            return true;
+          } else {
+            console.error('[WhatsApp] API no disponible');
+            return false;
+          }
         };
+      `).catch(err => console.error('[IPC] Error al configurar utilidades de WhatsApp en el frontend:', err));
+    });
+    
+    // Configurar envío periódico del estado de WhatsApp al frontend (cada minuto)
+    // Esto permite que la interfaz se actualice incluso si no hay otros eventos
+    const whatsappStatusInterval = setInterval(() => {
+      if (mainWindow.isDestroyed()) {
+        clearInterval(whatsappStatusInterval);
+        return;
       }
       
-      // Para mensajes normales
-      console.log(`[IPC] Solicitud para enviar mensaje a: ${messageData.phone}`);
-      const result = await whatsappService.sendWhatsAppMessage(messageData.phone, messageData.message);
-      console.log(`[IPC] Resultado de envío:`, result.success);
-      return result;
-    } catch (error) {
-      console.error(`[IPC] Error al procesar solicitud de WhatsApp:`, error);
-      return { 
-        success: false, 
-        message: error.message || 'Error al procesar solicitud de WhatsApp' 
-      };
-    }
-  });
+      // Verificar estado actual y notificar al frontend
+      const isConnected = whatsappService && typeof whatsappService.isWhatsAppConnected === 'function' 
+                         ? whatsappService.isWhatsAppConnected() 
+                         : false;
+      
+      mainWindow.webContents.send('whatsapp-status-update', { 
+        connected: isConnected,
+        timestamp: new Date().toISOString()
+      });
+    }, 60000); // cada 60 segundos
+    
+    // Limpiar intervalo cuando la ventana se cierra
+    mainWindow.on('closed', () => {
+      clearInterval(whatsappStatusInterval);
+    });
+  }
 
-  // Obtener historial de mensajes
-  ipcMain.handle('get-whatsapp-message-history', () => {
-    console.log(`[IPC] Obteniendo historial de mensajes WhatsApp`);
-    try {
-      return whatsappService.getMessageHistory();
-    } catch (error) {
-      console.error(`[IPC] Error al obtener historial:`, error);
-      return [];
-    }
-  });
-
-  console.log(`[IPC] Manejadores de WhatsApp configurados correctamente`);
+  console.log(`[IPC] Configuración de eventos WhatsApp completada`);
 }
 
 module.exports = { setupWhatsAppIPC };
