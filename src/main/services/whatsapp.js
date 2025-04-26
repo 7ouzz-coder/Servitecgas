@@ -14,6 +14,7 @@ let autoInitOnStartup = true; // Cambiado a true para iniciar automáticamente
 let reconnectAttempts = 0;
 let maxReconnectAttempts = 3;
 let reconnectInterval = null;
+let handlersRegistered = false;
 
 /**
  * Configura el servicio de WhatsApp
@@ -38,12 +39,12 @@ function setupWhatsAppService(mainWindow) {
   setupWhatsAppIpcHandlers();
   
   // Verificar si existe una sesión guardada e iniciar automáticamente
-  if (fs.existsSync(sessionDataPath) && autoInitOnStartup) {
+  if (fs.existsSync(sessionDataPath)) {
     console.log('Sesión de WhatsApp encontrada, iniciando automáticamente...');
-    // Esperar un poco para que la aplicación termine de cargar
+    // Aumentar el tiempo de espera para asegurar que todos los recursos estén cargados
     setTimeout(() => {
       initializeWhatsAppClient();
-    }, 3000);
+    }, 5000); // 5 segundos
   } else {
     console.log('No se inicia WhatsApp automáticamente. El usuario deberá conectarse manualmente.');
   }
@@ -179,31 +180,24 @@ function initializeWhatsAppClient() {
       initializationInProgress = false;
       reconnectAttempts = 0;
       
-      // Limpiar intervalo de reconexión si existe
-      if (reconnectInterval) {
-        clearInterval(reconnectInterval);
-        reconnectInterval = null;
-      }
-      
       // Guardar la sesión cuando esté lista
-      if (whatsappClient && whatsappClient.session && sessionDataPath) {
-        try {
+      try {
+        if (whatsappClient && whatsappClient.session) {
           const sessionJson = JSON.stringify(whatsappClient.session);
           console.log(`Guardando sesión de WhatsApp (longitud: ${sessionJson.length} caracteres)`);
           fs.writeFileSync(sessionDataPath, sessionJson, 'utf8');
           console.log('Sesión de WhatsApp guardada correctamente');
-        } catch (error) {
-          console.error('Error detallado al guardar sesión de WhatsApp:', error);
+          
+          // Verificar que el archivo se guardó correctamente
+          if (fs.existsSync(sessionDataPath)) {
+            const stats = fs.statSync(sessionDataPath);
+            console.log(`Archivo de sesión guardado: ${stats.size} bytes`);
+          }
+        } else {
+          console.error('No hay datos de sesión disponibles para guardar');
         }
-      }
-      
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        console.log('Notificando al frontend que WhatsApp está listo');
-        mainWindowRef.webContents.send('whatsapp-ready');
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'success',
-          message: 'WhatsApp conectado y listo para enviar mensajes'
-        });
+      } catch (error) {
+        console.error('Error detallado al guardar sesión de WhatsApp:', error);
       }
     });
     
@@ -367,12 +361,18 @@ function handleSessionReconnection() {
  * Configurar los manejadores IPC para WhatsApp
  */
 function setupWhatsAppIpcHandlers() {
+  // Si ya se registraron los handlers, no hacerlo de nuevo
+  if (handlersRegistered) {
+    console.log('Los handlers de WhatsApp ya están registrados, omitiendo...');
+    return;
+  }
+  
   // Verificar si WhatsApp está conectado
   ipcMain.handle('is-whatsapp-connected', () => {
     console.log(`Verificando estado de WhatsApp. Está conectado: ${isWhatsAppReady}`);
     return isWhatsAppReady;
   });
-  
+
   // Cerrar sesión de WhatsApp
   ipcMain.handle('logout-whatsapp', async () => {
     console.log('Solicitud para cerrar sesión de WhatsApp');

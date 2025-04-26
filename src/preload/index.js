@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   
   // Eventos de WhatsApp
   onWhatsAppQR: (callback) => {
-    ipcRenderer.on('whatsapp-qr', (event, qr) => callback(qr));
+    ipcRenderer.on('whatsapp-qr', (_, qrData) => callback(qrData));
   },
   
   onWhatsAppReady: (callback) => {
@@ -55,7 +55,7 @@ contextBridge.exposeInMainWorld('api', {
   
   // Eventos adicionales para WhatsApp
   onWhatsAppLoading: (callback) => {
-    ipcRenderer.on('whatsapp-loading', (event, data) => callback(data));
+    ipcRenderer.on('whatsapp-loading', (_, data) => callback(data));
   },
   
   onWhatsAppAuthenticated: (callback) => {
@@ -182,13 +182,13 @@ contextBridge.exposeInMainWorld('api', {
   // WhatsApp
   // ============================================================
   
-  sendWhatsAppMessage: (messageData) => ipcRenderer.invoke('send-whatsapp-message', messageData),
   isWhatsAppConnected: () => ipcRenderer.invoke('is-whatsapp-connected'),
+  sendWhatsAppMessage: (messageData) => ipcRenderer.invoke('send-whatsapp-message', messageData),
+  initializeWhatsApp: () => ipcRenderer.invoke('initialize-whatsapp'),
   logoutWhatsApp: () => ipcRenderer.invoke('logout-whatsapp'),
   getWhatsAppMessageHistory: () => ipcRenderer.invoke('get-whatsapp-message-history'),
   
   // Nuevas funciones para WhatsApp
-  initializeWhatsApp: () => ipcRenderer.invoke('initialize-whatsapp'),
   getWhatsAppChats: () => ipcRenderer.invoke('get-whatsapp-chats'),
   
   // ============================================================

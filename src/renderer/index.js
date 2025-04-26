@@ -3,18 +3,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const authStatus = await window.api.checkAuth();
     
+    // Verificar autenticación
+  try {
+    const authStatus = await window.api.checkAuth();
+    
     if (!authStatus.isAuthenticated) {
       // Redirigir a la página de login
       window.location.href = 'login.html';
       return;
     }
+    
+    // Iniciar la aplicación si está autenticado
+    initApp();
+    
+    // Inicializar WhatsApp DESPUÉS de que la app esté completamente iniciada
+    setTimeout(async () => {
+      if (window.api) {
+        try {
+          await initializeWhatsApp();
+          console.log('✅ Integración con WhatsApp inicializada correctamente');
+        } catch (error) {
+          console.error('Error al inicializar WhatsApp:', error);
+        }
+      } else {
+        console.error('❌ API de Electron no disponible');
+      }
+    }, 2000); // Esperar un poco para que todo se cargue bien
+    
+  } catch (error) {
+    console.error('Error al verificar autenticación:', error);
+    // En caso de error, redirigir a login por seguridad
+    window.location.href = 'login.html';
+  }
 
-    if (window.api) {
-      await initializeWhatsApp();
-      console.log('✅ Integración con WhatsApp inicializada correctamente');
-    } else {
-      console.error('❌ API de Electron no disponible');
-    }
 // Mostrar panel de administración (solo para admin)
 async function showAdminPanel() {
   try {

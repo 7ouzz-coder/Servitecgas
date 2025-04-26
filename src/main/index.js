@@ -665,6 +665,15 @@ function setupIpcHandlers(store) {
   // Manejadores para WhatsApp
   // ============================================================
   
+  const whatsappService = {
+    isWhatsAppConnected,
+    initializeWhatsAppClient: () => setupWhatsAppService(mainWindow),
+    logoutWhatsApp,
+    sendWhatsAppMessage,
+    getMessageHistory
+  };
+  
+  // Ahora llama a la función con el servicio creado
   setupWhatsAppIPC(whatsappService, mainWindow);
 
   // ============================================================
