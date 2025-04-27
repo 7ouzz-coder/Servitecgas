@@ -5,10 +5,7 @@ const AuthService = require('./services/auth'); // Servicio de autenticación lo
 const fs = require('fs');
 const errorHandler = require('./utils/error-handler');
 const setupIpcHandlers = require('./db/ipc-handlers');
-const registeredHandlers = new Set();
-
-// Bandera para asegurar que los handlers se registren solo una vez
-let handlersRegistered = false;
+const { setupSyncManager } = require('./db/sync-manager');
 
 // Cargar variables de entorno
 require('dotenv').config();
@@ -25,6 +22,9 @@ let mainWindow;
 // Variables para servicios
 let authService;
 let store;
+
+// Conjunto global para rastrear manejadores IPC registrados
+const registeredHandlers = new Set();
 
 // Función para crear la ventana principal
 function createWindow() {
@@ -107,12 +107,9 @@ app.whenReady().then(async () => {
     // Inicializar sistema de actualizaciones
     updateService.initUpdateSystem(mainWindow);
     
-    // Crear un conjunto para rastrear todos los manejadores IPC registrados
-    const registeredHandlers = new Set();
-    
     // Configurar sincronización con Azure
     try {
-      // Pasar el conjunto de manejadores registrados a setupSync
+      // Primero configura la sincronización con Azure, que registrará sus propios manejadores
       await syncService.setupSync(store, mainWindow);
       console.log('Sincronización configurada correctamente');
     } catch (error) {
@@ -129,26 +126,36 @@ app.whenReady().then(async () => {
       syncService
     };
     
-    // Verificar manejadores ya registrados
-    console.log('Manejadores ya registrados antes de setupIpcHandlers:', Array.from(registeredHandlers));
-    
-    // Configurar manejadores IPC centralizados, pasando el conjunto de manejadores existentes
+    // Configurar manejadores IPC centralizados, pasando el conjunto para rastrear los ya registrados
     setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers);
+    
+    console.log('Aplicación inicializada correctamente');
+    console.log('Manejadores IPC registrados:', Array.from(registeredHandlers).join(', '));
     
   } catch (error) {
     errorHandler.captureError('app.whenReady', error);
     console.error('Error crítico al iniciar la aplicación:', error);
+    dialog.showErrorBox(
+      'Error de inicialización', 
+      `Ocurrió un error crítico al iniciar la aplicación: ${error.message}`
+    );
   }
 }).catch(error => {
   errorHandler.captureError('app.whenReady.catch', error);
   console.error('Error fatal al iniciar la aplicación:', error);
+  dialog.showErrorBox(
+    'Error fatal', 
+    `Error al iniciar la aplicación: ${error.message}`
+  );
 });
 
 // Salir cuando todas las ventanas estén cerradas (excepto en macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     // Detener servicios antes de salir
-    syncService.stopAutoSync();
+    if (syncService && syncService.stopAutoSync) {
+      syncService.stopAutoSync();
+    }
     app.quit();
   }
 });

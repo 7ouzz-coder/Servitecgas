@@ -5,7 +5,7 @@ const {
   getLastSyncTime, 
   setLastSyncTime 
 } = require('./store');
-const { getAuthToken } = require('../azure/auth');
+const { getAuthToken } = require('../services/auth');
 const azureSync = require('../azure/sync');
 const azureConfig = require('../azure/config');
 const os = require('os');
@@ -19,11 +19,10 @@ let deviceId = null;
 /**
  * Configura el gestor de sincronización
  * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
+ * @param {Set} registeredHandlers - Conjunto de manejadores ya registrados
+ * @returns {Set} - Conjunto actualizado de manejadores registrados
  */
-function setupSyncManager(mainWindow) {
-  // Registrar un conjunto de manejadores y mantenerlo
-  const registeredHandlers = new Set();
-  
+function setupSyncManager(mainWindow, registeredHandlers = new Set()) {
   // Inicializar identificador único para este dispositivo
   initDeviceId();
   
@@ -31,7 +30,7 @@ function setupSyncManager(mainWindow) {
   initAzureConfig();
   
   // Manejadores IPC para sincronización
-  const updatedHandlers = setupSyncHandlers(mainWindow, registeredHandlers);
+  setupSyncHandlers(mainWindow, registeredHandlers);
   
   // Configurar sincronización automática periódica
   setupAutoSync(mainWindow);
@@ -39,10 +38,7 @@ function setupSyncManager(mainWindow) {
   // Escuchar eventos de conexión para sincronizar cuando se restablezca la conexión
   setupConnectivityListeners(mainWindow);
   
-  // Añadir propiedad al objeto para que sea accesible desde el exterior
-  setupSyncManager.registeredHandlers = updatedHandlers;
-  
-  return updatedHandlers; // Devolver los manejadores registrados
+  return registeredHandlers;
 }
 
 /**
@@ -128,18 +124,18 @@ function initAzureConfig() {
 /**
  * Configura los manejadores IPC para la sincronización
  * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
+ * @param {Set} registeredHandlers - Conjunto de manejadores ya registrados
  */
-function setupSyncHandlers(mainWindow, registeredHandlers = null) {
-  const handlers = registeredHandlers || new Set();
-  
+function setupSyncHandlers(mainWindow, registeredHandlers = new Set()) {
   // Función para registrar un manejador de forma segura
   const safeHandle = (channel, handler) => {
-    if (handlers.has(channel)) {
+    if (registeredHandlers.has(channel)) {
       console.log(`Manejador para '${channel}' ya registrado en sync-manager, omitiendo...`);
       return;
     }
     ipcMain.handle(channel, handler);
-    handlers.add(channel);
+    registeredHandlers.add(channel);
+    console.log(`Manejador IPC registrado: ${channel}`);
   };
   
   // Sincronizar datos
@@ -519,7 +515,8 @@ function setupSyncHandlers(mainWindow, registeredHandlers = null) {
       };
     }
   });
-  return handlers;
+
+  return registeredHandlers;
 }
 
 /**

@@ -11,6 +11,8 @@ const azureConfig = require('../azure/config');
  * @param {Store} store - Instancia de la base de datos
  * @param {Object} services - Servicios disponibles (authService, whatsappService, etc.)
  * @param {BrowserWindow} mainWindow - Ventana principal para notificaciones
+ * @param {Set} registeredHandlers - Conjunto para rastrear manejadores ya registrados
+ * @returns {Set} - Conjunto actualizado de manejadores registrados
  */
 module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers = new Set()) {
   const { authService, whatsappService, backupService, updateService, syncService } = services;
@@ -23,6 +25,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     }
     ipcMain.handle(channel, handler);
     registeredHandlers.add(channel);
+    console.log(`Manejador IPC registrado: ${channel}`);
   };
   
   // <-- AUTENTICACIÓN -->
@@ -31,7 +34,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     const result = authService.login(credentials.username, credentials.password);
     
     // Si el login es exitoso, notificar a la interfaz
-    if (result.success && mainWindow) {
+    if (result.success && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('auth-changed', { 
         isAuthenticated: true, 
         user: result.user 
@@ -41,12 +44,11 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return result;
   });
   
-  // Continúa con el resto de los manejadores, pero cambiando ipcMain.handle por safeHandle
   safeHandle('logout', () => {
     const result = authService.logout();
     
     // Notificar a la interfaz
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('auth-changed', { 
         isAuthenticated: false 
       });
@@ -603,174 +605,177 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
   
   // <-- SINCRONIZACIÓN -->
-  
-  // Sincronizar datos
+  // Registramos solo si el servicio existe y no se han registrado antes
   if (syncService) {
-    safeHandle('sync-data', async () => {
-      if (!syncService) {
-        return { success: false, message: 'Servicio de sincronización no disponible' };
-      }
-      
-      try {
-        return await syncService.synchronize(store, mainWindow);
-      } catch (error) {
-        console.error('Error en sincronización manual:', error);
-        return {
-          success: false,
-          message: `Error: ${error.message}`
-        };
-      }
-    });
+    // Solo si los manejadores no existen ya
+    if (!registeredHandlers.has('sync-data')) {
+      safeHandle('sync-data', async () => {
+        try {
+          return await syncService.synchronize(store, mainWindow);
+        } catch (error) {
+          console.error('Error en sincronización manual:', error);
+          return {
+            success: false,
+            message: `Error: ${error.message}`
+          };
+        }
+      });
+    }
+    
+    if (!registeredHandlers.has('get-sync-status')) {
+      safeHandle('get-sync-status', () => {
+        return syncService.getSyncStatus(store);
+      });
+    }
+    
+    // Manejadores adicionales de sincronización solo si no existen
+    if (!registeredHandlers.has('check-azure-connection')) {
+      safeHandle('check-azure-connection', async () => {
+        try {
+          // Configuración actual
+          const config = azureConfig.initAzureConfig();
+          
+          if (!config.connectionString) {
+            return {
+              success: false,
+              message: 'No hay configuración de conexión. Configure la cadena de conexión de Azure.'
+            };
+          }
+          
+          // Comprobar si está en línea
+          if (!syncService.isAzureConfigValid) {
+            return {
+              success: false,
+              message: 'Configuración de Azure no válida'
+            };
+          }
+          
+          // Intentamos una operación simple para verificar conexión
+          const result = await syncService.checkConnection();
+          return result;
+        } catch (error) {
+          console.error('Error al verificar conexión con Azure:', error);
+          return {
+            success: false,
+            message: `Error al verificar conexión: ${error.message}`
+          };
+        }
+      });
+    }
+    
+    if (!registeredHandlers.has('force-download-from-azure')) {
+      safeHandle('force-download-from-azure', async () => {
+        if (!syncService.forceDownload) {
+          return { 
+            success: false, 
+            message: 'Operación no soportada' 
+          };
+        }
+        
+        try {
+          return await syncService.forceDownload(store, mainWindow);
+        } catch (error) {
+          console.error('Error en descarga forzada:', error);
+          return { 
+            success: false, 
+            message: `Error en descarga forzada: ${error.message}` 
+          };
+        }
+      });
+    }
+    
+    if (!registeredHandlers.has('force-upload-to-azure')) {
+      safeHandle('force-upload-to-azure', async () => {
+        if (!syncService.forceUpload) {
+          return { 
+            success: false, 
+            message: 'Operación no soportada' 
+          };
+        }
+        
+        try {
+          return await syncService.forceUpload(store, mainWindow);
+        } catch (error) {
+          console.error('Error en subida forzada:', error);
+          return { 
+            success: false, 
+            message: `Error en subida forzada: ${error.message}` 
+          };
+        }
+      });
+    }
+    
+    if (!registeredHandlers.has('set-auto-sync')) {
+      safeHandle('set-auto-sync', async (event, enabled) => {
+        try {
+          if (!syncService.setAutoSync) {
+            // Actualizar configuración directamente
+            const config = azureConfig.initAzureConfig();
+            config.autoSyncEnabled = enabled;
+            azureConfig.updateAzureConfig(config);
+            
+            return { success: true };
+          }
+          
+          return await syncService.setAutoSync(enabled, store, mainWindow);
+        } catch (error) {
+          console.error('Error al configurar sincronización automática:', error);
+          return { 
+            success: false, 
+            message: `Error: ${error.message}` 
+          };
+        }
+      });
+    }
+    
+    if (!registeredHandlers.has('reset-sync-state')) {
+      safeHandle('reset-sync-state', async () => {
+        try {
+          // Restablecer timestamp de última sincronización
+          azureConfig.updateLastSyncTime(null);
+          
+          return { success: true };
+        } catch (error) {
+          console.error('Error al restablecer estado de sincronización:', error);
+          return { 
+            success: false, 
+            message: `Error: ${error.message}` 
+          };
+        }
+      });
+    }
+    
+    if (!registeredHandlers.has('get-azure-config')) {
+      safeHandle('get-azure-config', () => {
+        return azureConfig.initAzureConfig();
+      });
+    }
+    
+    if (!registeredHandlers.has('update-azure-config')) {
+      safeHandle('update-azure-config', async (event, newConfig) => {
+        try {
+          // Actualizar configuración
+          const updatedConfig = azureConfig.updateAzureConfig(newConfig);
+          
+          // Configuración adicional si syncService tiene los métodos necesarios
+          if (syncService.restartAutoSync) {
+            await syncService.restartAutoSync(store, mainWindow, updatedConfig);
+          }
+          
+          return { success: true, config: updatedConfig };
+        } catch (error) {
+          console.error('Error al actualizar configuración de Azure:', error);
+          return { 
+            success: false, 
+            message: `Error al actualizar configuración: ${error.message}` 
+          };
+        }
+      });
+    }
   }
   
-  // Obtener estado de sincronización
-  safeHandle('get-sync-status', () => {
-    if (!syncService) {
-      return {
-        lastSync: null,
-        syncInProgress: false,
-        connectionAvailable: false,
-        autoSyncEnabled: false,
-        status: 'error'
-      };
-    }
-    
-    return syncService.getSyncStatus(store);
-  });
-  
-  // Obtener configuración de Azure
-  safeHandle('get-azure-config', () => {
-    return azureConfig.initAzureConfig();
-  });
-  
-  // Actualizar configuración de Azure
-  safeHandle('update-azure-config', async (event, newConfig) => {
-    try {
-      // Actualizar configuración
-      const updatedConfig = azureConfig.updateAzureConfig(newConfig);
-      
-      // Reiniciar sincronización si el servicio está disponible
-      if (syncService) {
-        await syncService.stopAutoSync();
-        
-        if (updatedConfig.autoSyncEnabled) {
-          await syncService.startAutoSync(store, mainWindow, updatedConfig.syncIntervalMinutes);
-        }
-      }
-      
-      return { success: true, config: updatedConfig };
-    } catch (error) {
-      console.error('Error al actualizar configuración de Azure:', error);
-      return { 
-        success: false, 
-        message: `Error al actualizar configuración: ${error.message}` 
-      };
-    }
-  });
-  
-  // Verificar conexión con Azure
-  safeHandle('check-azure-connection', async () => {
-    try {
-      // Configuración actual
-      const config = azureConfig.initAzureConfig();
-      
-      if (!config.connectionString) {
-        return {
-          success: false,
-          message: 'No hay configuración de conexión. Configure la cadena de conexión de Azure.'
-        };
-      }
-      
-      // Verificar si estamos en modo offline
-      if (!syncService) {
-        return {
-          success: false,
-          message: 'Servicio de sincronización no disponible'
-        };
-      }
-      
-      // Intentar verificar conexión
-      return await syncService.checkConnection();
-    } catch (error) {
-      console.error('Error al verificar conexión con Azure:', error);
-      return {
-        success: false,
-        message: `Error al verificar conexión: ${error.message}`
-      };
-    }
-  });
-  
-  // Forzar descarga desde Azure
-  safeHandle('force-download-from-azure', async () => {
-    if (!syncService) {
-      return { success: false, message: 'Servicio de sincronización no disponible' };
-    }
-    
-    try {
-      return await syncService.forceDownload(store, mainWindow);
-    } catch (error) {
-      console.error('Error en descarga forzada:', error);
-      return { 
-        success: false, 
-        message: `Error en descarga forzada: ${error.message}` 
-      };
-    }
-  });
-  
-  // Forzar subida a Azure
-  safeHandle('force-upload-to-azure', async () => {
-    if (!syncService) {
-      return { success: false, message: 'Servicio de sincronización no disponible' };
-    }
-    
-    try {
-      return await syncService.forceUpload(store, mainWindow);
-    } catch (error) {
-      console.error('Error en subida forzada:', error);
-      return { 
-        success: false, 
-        message: `Error en subida forzada: ${error.message}` 
-      };
-    }
-  });
-  
-  // Activar/desactivar sincronización automática
-  safeHandle('set-auto-sync', async (event, enabled) => {
-    if (!syncService) {
-      return { success: false, message: 'Servicio de sincronización no disponible' };
-    }
-    
-    try {
-      return await syncService.setAutoSync(enabled, store, mainWindow);
-    } catch (error) {
-      console.error('Error al configurar sincronización automática:', error);
-      return {
-        success: false,
-        message: `Error: ${error.message}`
-      };
-    }
-  });
-  
-  // Restablecer estado de sincronización
-  safeHandle('reset-sync-state', async () => {
-    if (!syncService) {
-      return { success: false, message: 'Servicio de sincronización no disponible' };
-    }
-    
-    try {
-      return await syncService.resetSyncState();
-    } catch (error) {
-      console.error('Error al resetear estado de sincronización:', error);
-      return {
-        success: false,
-        message: `Error: ${error.message}`
-      };
-    }
-  });
-  
   // <-- EXPORTAR/IMPORTAR BASE DE DATOS -->
-  
-  // Exportar base de datos
+
   safeHandle('export-database', async () => {
     try {
       const { filePath, canceled } = await dialog.showSaveDialog({
@@ -858,7 +863,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
       }
       
       // Notificar a la interfaz
-      if (mainWindow) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('database-imported');
       }
       
@@ -880,5 +885,5 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     }
   });
 
-  console.log('Handlers IPC configurados: ' + Array.from(registeredHandlers).join(', '));
+  return registeredHandlers;
 }
