@@ -163,662 +163,662 @@ async function loadReports() {
 
 // Configurar eventos para la sección de reportes
 function setupReportsEvents() {
-// Botones de reportes
-const maintenanceReportBtn = document.getElementById('maintenanceReportBtn');
-const clientReportBtn = document.getElementById('clientReportBtn');
-const installationTypeReportBtn = document.getElementById('installationTypeReportBtn');
-const componentReportBtn = document.getElementById('componentReportBtn');
+  // Botones de reportes
+  const maintenanceReportBtn = document.getElementById('maintenanceReportBtn');
+  const clientReportBtn = document.getElementById('clientReportBtn');
+  const installationTypeReportBtn = document.getElementById('installationTypeReportBtn');
+  const componentReportBtn = document.getElementById('componentReportBtn');
 
-if (maintenanceReportBtn) {
-  maintenanceReportBtn.addEventListener('click', () => {
-    showReportConfigModal('maintenance');
-  });
-}
+  if (maintenanceReportBtn) {
+    maintenanceReportBtn.addEventListener('click', () => {
+      showReportConfigModal('maintenance');
+    });
+  }
 
-if (clientReportBtn) {
-  clientReportBtn.addEventListener('click', () => {
-    showReportConfigModal('clients');
-  });
-}
+  if (clientReportBtn) {
+    clientReportBtn.addEventListener('click', () => {
+      showReportConfigModal('clients');
+    });
+  }
 
-if (installationTypeReportBtn) {
-  installationTypeReportBtn.addEventListener('click', () => {
-    showReportConfigModal('installation-type');
-  });
-}
+  if (installationTypeReportBtn) {
+    installationTypeReportBtn.addEventListener('click', () => {
+      showReportConfigModal('installation-type');
+    });
+  }
 
-if (componentReportBtn) {
-  componentReportBtn.addEventListener('click', () => {
-    showReportConfigModal('components');
-  });
-}
+  if (componentReportBtn) {
+    componentReportBtn.addEventListener('click', () => {
+      showReportConfigModal('components');
+    });
+  }
 
-// Botón de exportación
-const exportDataBtn = document.getElementById('exportDataBtn');
-if (exportDataBtn) {
-  exportDataBtn.addEventListener('click', async () => {
-    const exportType = document.getElementById('exportTypeSelect').value;
-    const exportFormat = document.getElementById('exportFormatSelect').value;
-    const selectFolder = document.getElementById('selectFolderCheck').checked;
-    
-    try {
-      // Deshabilitar botón mientras se procesa la exportación
-      exportDataBtn.disabled = true;
-      const originalText = exportDataBtn.innerHTML;
-      exportDataBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Exportando...';
-      
-      showAlert('info', `Preparando exportación de ${exportType} en formato ${exportFormat}...`);
-      
-      // Solicitar al backend que exporte los datos
-      const result = await window.api.exportData({
-        dataType: exportType,
-        format: exportFormat,
-        selectFolder: selectFolder // Indicar si queremos seleccionar la carpeta de destino
-      });
-      
-      if (result.success) {
-        showAlert('success', `Datos exportados correctamente a: ${result.filePath}`);
-      } else {
-        showAlert('danger', `Error al exportar datos: ${result.message}`);
-      }
-    } catch (error) {
-      console.error('Error al exportar datos:', error);
-      showAlert('danger', `Error al exportar datos: ${error.message}`);
-    } finally {
-      // Restaurar botón
-      exportDataBtn.disabled = false;
-      exportDataBtn.innerHTML = originalText;
-    }
-  });
-}
-}
-
-// Mostrar modal para configurar un reporte
-function showReportConfigModal(reportType) {
-let title = '';
-let customFields = '';
-
-switch (reportType) {
-  case 'maintenance':
-    title = 'Reporte de Mantenimientos';
-    customFields = `
-      <div class="row mb-3">
-        <div class="col-md-6">
-          <label for="reportStartDate" class="form-label">Fecha de inicio:</label>
-          <input type="date" class="form-control" id="reportStartDate">
-        </div>
-        <div class="col-md-6">
-          <label for="reportEndDate" class="form-label">Fecha de fin:</label>
-          <input type="date" class="form-control" id="reportEndDate">
-        </div>
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Estado de mantenimiento:</label>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="pending" id="pendingCheck" checked>
-          <label class="form-check-label" for="pendingCheck">
-            Pendientes
-          </label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="completed" id="completedCheck" checked>
-          <label class="form-check-label" for="completedCheck">
-            Realizados
-          </label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="urgent" id="urgentCheck" checked>
-          <label class="form-check-label" for="urgentCheck">
-            Urgentes
-          </label>
-        </div>
-      </div>
-    `;
-    break;
-  case 'clients':
-    title = 'Reporte de Clientes';
-    customFields = `
-      <div class="mb-3">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="includeInstallations" id="includeInstallations" checked>
-          <label class="form-check-label" for="includeInstallations">
-            Incluir instalaciones
-          </label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="includeComponents" id="includeComponents" checked>
-          <label class="form-check-label" for="includeComponents">
-            Incluir componentes
-          </label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="includeContactInfo" id="includeContactInfo" checked>
-          <label class="form-check-label" for="includeContactInfo">
-            Incluir información de contacto
-          </label>
-        </div>
-      </div>
-    `;
-    break;
-  case 'installation-type':
-    title = 'Reporte por Tipo de Instalación';
-    customFields = `
-      <div class="mb-3">
-        <label class="form-label">Tipos de instalación:</label>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="Residencial" id="residentialCheck" checked>
-          <label class="form-check-label" for="residentialCheck">
-            Residencial
-          </label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="Comercial" id="commercialCheck" checked>
-          <label class="form-check-label" for="commercialCheck">
-            Comercial
-          </label>
-        </div>
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="Industrial" id="industrialCheck" checked>
-          <label class="form-check-label" for="industrialCheck">
-            Industrial
-          </label>
-        </div>
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Agrupar por:</label>
-        <select class="form-select" id="groupBySelect">
-          <option value="client">Cliente</option>
-          <option value="component">Componente</option>
-          <option value="date">Fecha de instalación</option>
-        </select>
-      </div>
-    `;
-    break;
-  case 'components':
-    title = 'Reporte de Componentes';
-    customFields = `
-      <div class="mb-3">
-        <label class="form-label">Filtrar por tipo de componente:</label>
-        <input type="text" class="form-control" id="componentTypeFilter" placeholder="Ej: Caldera, Calefón, etc.">
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Ordenar por:</label>
-        <select class="form-select" id="sortBySelect">
-          <option value="name">Nombre</option>
-          <option value="installation_date">Fecha de instalación</option>
-          <option value="next_maintenance">Próximo mantenimiento</option>
-          <option value="client">Cliente</option>
-        </select>
-      </div>
-    `;
-    break;
-}
-
-const modalHtml = `
-  <div class="modal fade" id="reportConfigModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">${title}</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <form id="reportConfigForm">
-            <!-- Campos específicos del reporte -->
-            ${customFields}
-            
-            <!-- Campos comunes -->
-            <div class="mb-3">
-              <label for="reportFormatSelect" class="form-label">Formato de salida:</label>
-              <select class="form-select" id="reportFormatSelect">
-                <option value="pdf">PDF</option>
-                <option value="excel">Excel</option>
-                <option value="csv">CSV</option>
-                <option value="json">JSON</option>
-              </select>
-            </div>
-            
-            <div class="form-check mb-3">
-              <input class="form-check-input" type="checkbox" id="selectFolderCheck" checked>
-              <label class="form-check-label" for="selectFolderCheck">
-                Seleccionar carpeta de destino
-              </label>
-            </div>
-            
-            <div class="form-check mb-3">
-              <input class="form-check-input" type="checkbox" id="includeCharts" checked>
-              <label class="form-check-label" for="includeCharts">
-                Incluir gráficos en el reporte
-              </label>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-primary" id="generateReportBtn">Generar Reporte</button>
-        </div>
-      </div>
-    </div>
-  </div>
-`;
-
-// Añadir modal al DOM
-const tempDiv = document.createElement('div');
-tempDiv.innerHTML = modalHtml;
-document.body.appendChild(tempDiv.firstElementChild);
-
-// Configurar evento para generar reporte
-const generateReportBtn = document.getElementById('generateReportBtn');
-if (generateReportBtn) {
-  generateReportBtn.addEventListener('click', async () => {
-    try {
-      // Deshabilitar botón mientras se genera el reporte
-      generateReportBtn.disabled = true;
-      const originalText = generateReportBtn.innerHTML;
-      generateReportBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generando...';
-      
-      // Recopilar datos del formulario
-      const reportFormat = document.getElementById('reportFormatSelect').value;
+  // Botón de exportación
+  const exportDataBtn = document.getElementById('exportDataBtn');
+  if (exportDataBtn) {
+    exportDataBtn.addEventListener('click', async () => {
+      const exportType = document.getElementById('exportTypeSelect').value;
+      const exportFormat = document.getElementById('exportFormatSelect').value;
       const selectFolder = document.getElementById('selectFolderCheck').checked;
-      const includeCharts = document.getElementById('includeCharts').checked;
       
-      // Recopilar opciones específicas según el tipo
-      const options = {
-        format: reportFormat,
-        selectFolder: selectFolder,
-        includeCharts: includeCharts
-      };
-      
-      // Añadir opciones específicas según el tipo de reporte
-      switch (reportType) {
-        case 'maintenance':
-          options.startDate = document.getElementById('reportStartDate').value;
-          options.endDate = document.getElementById('reportEndDate').value;
-          options.statuses = [];
-          if (document.getElementById('pendingCheck').checked) options.statuses.push('pending');
-          if (document.getElementById('completedCheck').checked) options.statuses.push('completed');
-          if (document.getElementById('urgentCheck').checked) options.statuses.push('urgent');
-          break;
-        case 'clients':
-          options.includeInstallations = document.getElementById('includeInstallations').checked;
-          options.includeComponents = document.getElementById('includeComponents').checked;
-          options.includeContactInfo = document.getElementById('includeContactInfo').checked;
-          break;
-        case 'installation-type':
-          options.types = [];
-          if (document.getElementById('residentialCheck').checked) options.types.push('Residencial');
-          if (document.getElementById('commercialCheck').checked) options.types.push('Comercial');
-          if (document.getElementById('industrialCheck').checked) options.types.push('Industrial');
-          options.groupBy = document.getElementById('groupBySelect').value;
-          break;
-        case 'components':
-          options.componentType = document.getElementById('componentTypeFilter').value;
-          options.sortBy = document.getElementById('sortBySelect').value;
-          break;
-      }
-      
-      // Cerrar modal de configuración
-      const modal = bootstrap.Modal.getInstance(document.getElementById('reportConfigModal'));
-      modal.hide();
-      
-      // Mostrar mensaje de espera
-      showAlert('info', 'Generando reporte...');
-      
-      // Enviar solicitud al backend para generar el reporte
-      const result = await window.api.generateReport({
-        reportType: reportType,
-        options: options
-      });
-      
-      if (result.success) {
-        showAlert('success', `Reporte generado correctamente: ${result.filePath}`);
-      } else {
-        showAlert('danger', `Error al generar reporte: ${result.message}`);
-      }
-    } catch (error) {
-      console.error('Error al generar reporte:', error);
-      showAlert('danger', `Error al generar reporte: ${error.message}`);
-    } finally {
-      // Restaurar botón
-      generateReportBtn.disabled = false;
-      generateReportBtn.innerHTML = originalText;
-    }
-  });
-}
-
-// Mostrar modal
-const modal = new bootstrap.Modal(document.getElementById('reportConfigModal'));
-modal.show();
-
-// Eliminar modal del DOM cuando se cierre
-document.getElementById('reportConfigModal').addEventListener('hidden.bs.modal', function() {
-  this.remove();
-});
-}
-
-// Renderizar gráficos estadísticos
-function renderCharts(clients, installations, upcomingMaintenance) {
-// Gráfico de distribución por tipo de instalación
-renderInstallationTypeChart(installations);
-
-// Gráfico de estado de mantenimientos
-renderMaintenanceStatusChart(installations);
-
-// Gráfico de componentes por cliente
-renderComponentsPerClientChart(clients, installations);
-
-// Gráfico de actividad mensual
-renderMonthlyActivityChart(installations);
-}
-
-// Gráfico de distribución por tipo de instalación
-function renderInstallationTypeChart(installations) {
-const ctx = document.getElementById('installationTypeChart');
-if (!ctx) return;
-
-// Contar instalaciones por tipo
-const typeCount = {
-  'Residencial': 0,
-  'Comercial': 0,
-  'Industrial': 0,
-  'No especificado': 0
-};
-
-installations.forEach(installation => {
-  const type = installation.type || 'No especificado';
-  typeCount[type] = (typeCount[type] || 0) + 1;
-});
-
-// Crear gráfico
-new Chart(ctx, {
-  type: 'pie',
-  data: {
-    labels: Object.keys(typeCount),
-    datasets: [{
-      data: Object.values(typeCount),
-      backgroundColor: [
-        'rgba(75, 192, 192, 0.7)',
-        'rgba(54, 162, 235, 0.7)',
-        'rgba(153, 102, 255, 0.7)',
-        'rgba(201, 203, 207, 0.7)'
-      ],
-      borderWidth: 1
-    }]
-  },
-  options: {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'bottom'
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.raw || 0;
-            const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
-            const percentage = Math.round((value / total) * 100);
-            return `${label}: ${value} (${percentage}%)`;
-          }
+      try {
+        // Deshabilitar botón mientras se procesa la exportación
+        exportDataBtn.disabled = true;
+        const originalText = exportDataBtn.innerHTML;
+        exportDataBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Exportando...';
+        
+        showAlert('info', `Preparando exportación de ${exportType} en formato ${exportFormat}...`);
+        
+        // Solicitar al backend que exporte los datos
+        const result = await window.api.exportData({
+          dataType: exportType,
+          format: exportFormat,
+          selectFolder: selectFolder // Indicar si queremos seleccionar la carpeta de destino
+        });
+        
+        if (result.success) {
+          showAlert('success', `Datos exportados correctamente a: ${result.filePath}`);
+        } else {
+          showAlert('danger', `Error al exportar datos: ${result.message}`);
         }
+      } catch (error) {
+        console.error('Error al exportar datos:', error);
+        showAlert('danger', `Error al exportar datos: ${error.message}`);
+      } finally {
+        // Restaurar botón
+        exportDataBtn.disabled = false;
+        exportDataBtn.innerHTML = originalText;
       }
-    }
-  }
-});
-}
-
-// Gráfico de estado de mantenimientos
-function renderMaintenanceStatusChart(installations) {
-const ctx = document.getElementById('maintenanceStatusChart');
-if (!ctx) return;
-
-// Contar componentes por estado de mantenimiento
-let upToDate = 0;
-let upcoming = 0;
-let urgent = 0;
-let overdue = 0;
-let noMaintenance = 0;
-
-const today = new Date();
-
-installations.forEach(installation => {
-  if (!installation.components) return;
-  
-  installation.components.forEach(component => {
-    if (!component.nextMaintenanceDate) {
-      noMaintenance++;
-      return;
-    }
-    
-    const nextDate = new Date(component.nextMaintenanceDate);
-    const diffDays = Math.floor((nextDate - today) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) {
-      overdue++;
-    } else if (diffDays <= 7) {
-      urgent++;
-    } else if (diffDays <= 30) {
-      upcoming++;
-    } else {
-      upToDate++;
-    }
-  });
-});
-
-// Crear gráfico
-new Chart(ctx, {
-  type: 'doughnut',
-  data: {
-    labels: ['Al día', 'Próximos', 'Urgentes', 'Vencidos', 'No programados'],
-    datasets: [{
-      data: [upToDate, upcoming, urgent, overdue, noMaintenance],
-      backgroundColor: [
-        'rgba(75, 192, 192, 0.7)',
-        'rgba(54, 162, 235, 0.7)',
-        'rgba(255, 205, 86, 0.7)',
-        'rgba(255, 99, 132, 0.7)',
-        'rgba(201, 203, 207, 0.7)'
-      ],
-      borderWidth: 1
-    }]
-  },
-  options: {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'bottom'
-      }
-    }
-  }
-});
-}
-
-// Gráfico de componentes por cliente (top 10)
-function renderComponentsPerClientChart(clients, installations) {
-const ctx = document.getElementById('componentsPerClientChart');
-if (!ctx) return;
-
-// Contar componentes por cliente
-const componentsByClient = {};
-
-installations.forEach(installation => {
-  if (!installation.components) return;
-  
-  const clientId = installation.clientId;
-  if (!componentsByClient[clientId]) {
-    componentsByClient[clientId] = 0;
-  }
-  
-  componentsByClient[clientId] += installation.components.length;
-});
-
-// Obtener nombres de clientes y ordenar por cantidad de componentes
-const clientData = [];
-for (const clientId in componentsByClient) {
-  const client = clients.find(c => c.id === clientId);
-  if (client) {
-    clientData.push({
-      name: client.name,
-      count: componentsByClient[clientId]
     });
   }
 }
 
-// Ordenar y tomar los top 10
-clientData.sort((a, b) => b.count - a.count);
-const top10 = clientData.slice(0, 10);
+// Mostrar modal para configurar un reporte
+function showReportConfigModal(reportType) {
+  let title = '';
+  let customFields = '';
 
-// Crear gráfico
-new Chart(ctx, {
-  type: 'bar',
-  data: {
-    labels: top10.map(c => c.name),
-    datasets: [{
-      label: 'Componentes',
-      data: top10.map(c => c.count),
-      backgroundColor: 'rgba(54, 162, 235, 0.7)',
-      borderColor: 'rgba(54, 162, 235, 1)',
-      borderWidth: 1
-    }]
-  },
-  options: {
-    responsive: true,
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          precision: 0
+  switch (reportType) {
+    case 'maintenance':
+      title = 'Reporte de Mantenimientos';
+      customFields = `
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="reportStartDate" class="form-label">Fecha de inicio:</label>
+            <input type="date" class="form-control" id="reportStartDate">
+          </div>
+          <div class="col-md-6">
+            <label for="reportEndDate" class="form-label">Fecha de fin:</label>
+            <input type="date" class="form-control" id="reportEndDate">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Estado de mantenimiento:</label>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="pending" id="pendingCheck" checked>
+            <label class="form-check-label" for="pendingCheck">
+              Pendientes
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="completed" id="completedCheck" checked>
+            <label class="form-check-label" for="completedCheck">
+              Realizados
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="urgent" id="urgentCheck" checked>
+            <label class="form-check-label" for="urgentCheck">
+              Urgentes
+            </label>
+          </div>
+        </div>
+      `;
+      break;
+    case 'clients':
+      title = 'Reporte de Clientes';
+      customFields = `
+        <div class="mb-3">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="includeInstallations" id="includeInstallations" checked>
+            <label class="form-check-label" for="includeInstallations">
+              Incluir instalaciones
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="includeComponents" id="includeComponents" checked>
+            <label class="form-check-label" for="includeComponents">
+              Incluir componentes
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="includeContactInfo" id="includeContactInfo" checked>
+            <label class="form-check-label" for="includeContactInfo">
+              Incluir información de contacto
+            </label>
+          </div>
+        </div>
+      `;
+      break;
+    case 'installation-type':
+      title = 'Reporte por Tipo de Instalación';
+      customFields = `
+        <div class="mb-3">
+          <label class="form-label">Tipos de instalación:</label>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="Residencial" id="residentialCheck" checked>
+            <label class="form-check-label" for="residentialCheck">
+              Residencial
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="Comercial" id="commercialCheck" checked>
+            <label class="form-check-label" for="commercialCheck">
+              Comercial
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="Industrial" id="industrialCheck" checked>
+            <label class="form-check-label" for="industrialCheck">
+              Industrial
+            </label>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Agrupar por:</label>
+          <select class="form-select" id="groupBySelect">
+            <option value="client">Cliente</option>
+            <option value="component">Componente</option>
+            <option value="date">Fecha de instalación</option>
+          </select>
+        </div>
+      `;
+      break;
+    case 'components':
+      title = 'Reporte de Componentes';
+      customFields = `
+        <div class="mb-3">
+          <label class="form-label">Filtrar por tipo de componente:</label>
+          <input type="text" class="form-control" id="componentTypeFilter" placeholder="Ej: Caldera, Calefón, etc.">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Ordenar por:</label>
+          <select class="form-select" id="sortBySelect">
+            <option value="name">Nombre</option>
+            <option value="installation_date">Fecha de instalación</option>
+            <option value="next_maintenance">Próximo mantenimiento</option>
+            <option value="client">Cliente</option>
+          </select>
+        </div>
+      `;
+      break;
+  }
+
+  const modalHtml = `
+    <div class="modal fade" id="reportConfigModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">${title}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="reportConfigForm">
+              <!-- Campos específicos del reporte -->
+              ${customFields}
+              
+              <!-- Campos comunes -->
+              <div class="mb-3">
+                <label for="reportFormatSelect" class="form-label">Formato de salida:</label>
+                <select class="form-select" id="reportFormatSelect">
+                  <option value="pdf">PDF</option>
+                  <option value="excel">Excel</option>
+                  <option value="csv">CSV</option>
+                  <option value="json">JSON</option>
+                </select>
+              </div>
+              
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="selectFolderCheck" checked>
+                <label class="form-check-label" for="selectFolderCheck">
+                  Seleccionar carpeta de destino
+                </label>
+              </div>
+              
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="includeCharts" checked>
+                <label class="form-check-label" for="includeCharts">
+                  Incluir gráficos en el reporte
+                </label>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="generateReportBtn">Generar Reporte</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Añadir modal al DOM
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHtml;
+  document.body.appendChild(tempDiv.firstElementChild);
+
+  // Configurar evento para generar reporte
+  const generateReportBtn = document.getElementById('generateReportBtn');
+  if (generateReportBtn) {
+    generateReportBtn.addEventListener('click', async () => {
+      try {
+        // Deshabilitar botón mientras se genera el reporte
+        generateReportBtn.disabled = true;
+        const originalText = generateReportBtn.innerHTML;
+        generateReportBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generando...';
+        
+        // Recopilar datos del formulario
+        const reportFormat = document.getElementById('reportFormatSelect').value;
+        const selectFolder = document.getElementById('selectFolderCheck').checked;
+        const includeCharts = document.getElementById('includeCharts').checked;
+        
+        // Recopilar opciones específicas según el tipo
+        const options = {
+          format: reportFormat,
+          selectFolder: selectFolder,
+          includeCharts: includeCharts
+        };
+        
+        // Añadir opciones específicas según el tipo de reporte
+        switch (reportType) {
+          case 'maintenance':
+            options.startDate = document.getElementById('reportStartDate').value;
+            options.endDate = document.getElementById('reportEndDate').value;
+            options.statuses = [];
+            if (document.getElementById('pendingCheck').checked) options.statuses.push('pending');
+            if (document.getElementById('completedCheck').checked) options.statuses.push('completed');
+            if (document.getElementById('urgentCheck').checked) options.statuses.push('urgent');
+            break;
+          case 'clients':
+            options.includeInstallations = document.getElementById('includeInstallations').checked;
+            options.includeComponents = document.getElementById('includeComponents').checked;
+            options.includeContactInfo = document.getElementById('includeContactInfo').checked;
+            break;
+          case 'installation-type':
+            options.types = [];
+            if (document.getElementById('residentialCheck').checked) options.types.push('Residencial');
+            if (document.getElementById('commercialCheck').checked) options.types.push('Comercial');
+            if (document.getElementById('industrialCheck').checked) options.types.push('Industrial');
+            options.groupBy = document.getElementById('groupBySelect').value;
+            break;
+          case 'components':
+            options.componentType = document.getElementById('componentTypeFilter').value;
+            options.sortBy = document.getElementById('sortBySelect').value;
+            break;
+        }
+        
+        // Cerrar modal de configuración
+        const modal = bootstrap.Modal.getInstance(document.getElementById('reportConfigModal'));
+        modal.hide();
+        
+        // Mostrar mensaje de espera
+        showAlert('info', 'Generando reporte...');
+        
+        // Enviar solicitud al backend para generar el reporte
+        const result = await window.api.generateReport({
+          reportType: reportType,
+          options: options
+        });
+        
+        if (result.success) {
+          showAlert('success', `Reporte generado correctamente: ${result.filePath}`);
+        } else {
+          showAlert('danger', `Error al generar reporte: ${result.message}`);
+        }
+      } catch (error) {
+        console.error('Error al generar reporte:', error);
+        showAlert('danger', `Error al generar reporte: ${error.message}`);
+      } finally {
+        // Restaurar botón
+        generateReportBtn.disabled = false;
+        generateReportBtn.innerHTML = originalText;
+      }
+    });
+  }
+
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('reportConfigModal'));
+  modal.show();
+
+  // Eliminar modal del DOM cuando se cierre
+  document.getElementById('reportConfigModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+// Renderizar gráficos estadísticos
+function renderCharts(clients, installations, upcomingMaintenance) {
+  // Gráfico de distribución por tipo de instalación
+  renderInstallationTypeChart(installations);
+
+  // Gráfico de estado de mantenimientos
+  renderMaintenanceStatusChart(installations);
+
+  // Gráfico de componentes por cliente
+  renderComponentsPerClientChart(clients, installations);
+
+  // Gráfico de actividad mensual
+  renderMonthlyActivityChart(installations);
+}
+
+// Gráfico de distribución por tipo de instalación
+function renderInstallationTypeChart(installations) {
+  const ctx = document.getElementById('installationTypeChart');
+  if (!ctx) return;
+
+  // Contar instalaciones por tipo
+  const typeCount = {
+    'Residencial': 0,
+    'Comercial': 0,
+    'Industrial': 0,
+    'No especificado': 0
+  };
+
+  installations.forEach(installation => {
+    const type = installation.type || 'No especificado';
+    typeCount[type] = (typeCount[type] || 0) + 1;
+  });
+
+  // Crear gráfico
+  new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels: Object.keys(typeCount),
+      datasets: [{
+        data: Object.values(typeCount),
+        backgroundColor: [
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(153, 102, 255, 0.7)',
+          'rgba(201, 203, 207, 0.7)'
+        ],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'bottom'
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.label || '';
+              const value = context.raw || 0;
+              const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
+              const percentage = Math.round((value / total) * 100);
+              return `${label}: ${value} (${percentage}%)`;
+            }
+          }
         }
       }
+    }
+  });
+}
+
+// Gráfico de estado de mantenimientos
+function renderMaintenanceStatusChart(installations) {
+  const ctx = document.getElementById('maintenanceStatusChart');
+  if (!ctx) return;
+
+  // Contar componentes por estado de mantenimiento
+  let upToDate = 0;
+  let upcoming = 0;
+  let urgent = 0;
+  let overdue = 0;
+  let noMaintenance = 0;
+
+  const today = new Date();
+
+  installations.forEach(installation => {
+    if (!installation.components) return;
+    
+    installation.components.forEach(component => {
+      if (!component.nextMaintenanceDate) {
+        noMaintenance++;
+        return;
+      }
+      
+      const nextDate = new Date(component.nextMaintenanceDate);
+      const diffDays = Math.floor((nextDate - today) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays < 0) {
+        overdue++;
+      } else if (diffDays <= 7) {
+        urgent++;
+      } else if (diffDays <= 30) {
+        upcoming++;
+      } else {
+        upToDate++;
+      }
+    });
+  });
+
+  // Crear gráfico
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Al día', 'Próximos', 'Urgentes', 'Vencidos', 'No programados'],
+      datasets: [{
+        data: [upToDate, upcoming, urgent, overdue, noMaintenance],
+        backgroundColor: [
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 205, 86, 0.7)',
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(201, 203, 207, 0.7)'
+        ],
+        borderWidth: 1
+      }]
     },
-    plugins: {
-      legend: {
-        display: false
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'bottom'
+        }
       }
     }
+  });
+}
+
+// Gráfico de componentes por cliente (top 10)
+function renderComponentsPerClientChart(clients, installations) {
+  const ctx = document.getElementById('componentsPerClientChart');
+  if (!ctx) return;
+
+  // Contar componentes por cliente
+  const componentsByClient = {};
+
+  installations.forEach(installation => {
+    if (!installation.components) return;
+    
+    const clientId = installation.clientId;
+    if (!componentsByClient[clientId]) {
+      componentsByClient[clientId] = 0;
+    }
+    
+    componentsByClient[clientId] += installation.components.length;
+  });
+
+  // Obtener nombres de clientes y ordenar por cantidad de componentes
+  const clientData = [];
+  for (const clientId in componentsByClient) {
+    const client = clients.find(c => c.id === clientId);
+    if (client) {
+      clientData.push({
+        name: client.name,
+        count: componentsByClient[clientId]
+      });
+    }
   }
-});
+
+  // Ordenar y tomar los top 10
+  clientData.sort((a, b) => b.count - a.count);
+  const top10 = clientData.slice(0, 10);
+
+  // Crear gráfico
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top10.map(c => c.name),
+      datasets: [{
+        label: 'Componentes',
+        data: top10.map(c => c.count),
+        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            precision: 0
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        }
+      }
+    }
+  });
 }
 
 // Gráfico de actividad mensual (mantenimientos)
 function renderMonthlyActivityChart(installations) {
-const ctx = document.getElementById('monthlyActivityChart');
-if (!ctx) return;
+  const ctx = document.getElementById('monthlyActivityChart');
+  if (!ctx) return;
 
-// Preparar datos mensuales
-const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const maintenanceByMonth = Array(12).fill(0);
+  // Preparar datos mensuales
+  const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const maintenanceByMonth = Array(12).fill(0);
 
-// Para simplificar, asumimos que estamos en el año actual
-const currentYear = new Date().getFullYear();
+  // Para simplificar, asumimos que estamos en el año actual
+  const currentYear = new Date().getFullYear();
 
-installations.forEach(installation => {
-  if (!installation.components) return;
-  
-  installation.components.forEach(component => {
-    if (!component.lastMaintenanceDate) return;
+  installations.forEach(installation => {
+    if (!installation.components) return;
     
-    const lastDate = new Date(component.lastMaintenanceDate);
-    
-    // Solo contar mantenimientos del año actual
-    if (lastDate.getFullYear() === currentYear) {
-      const month = lastDate.getMonth();
-      maintenanceByMonth[month]++;
-    }
+    installation.components.forEach(component => {
+      if (!component.lastMaintenanceDate) return;
+      
+      const lastDate = new Date(component.lastMaintenanceDate);
+      
+      // Solo contar mantenimientos del año actual
+      if (lastDate.getFullYear() === currentYear) {
+        const month = lastDate.getMonth();
+        maintenanceByMonth[month]++;
+      }
+    });
   });
-});
 
-// Crear gráfico
-new Chart(ctx, {
-  type: 'line',
-  data: {
-    labels: monthLabels,
-    datasets: [{
-      label: 'Mantenimientos realizados',
-      data: maintenanceByMonth,
-      backgroundColor: 'rgba(75, 192, 192, 0.2)',
-      borderColor: 'rgba(75, 192, 192, 1)',
-      borderWidth: 2,
-      tension: 0.3,
-      fill: true
-    }]
-  },
-  options: {
-    responsive: true,
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          precision: 0
+  // Crear gráfico
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: monthLabels,
+      datasets: [{
+        label: 'Mantenimientos realizados',
+        data: maintenanceByMonth,
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            precision: 0
+          }
         }
       }
     }
-  }
-});
+  });
 }
 
 // Función para mostrar alertas
 function showAlert(type, message, duration = 5000) {
-if (typeof window.showAlert === 'function') {
-  window.showAlert(type, message, duration);
-  return;
-}
-
-// Implementación alternativa si la función global no existe
-const alertContainer = document.getElementById('alert-container');
-if (!alertContainer) {
-  // Crear contenedor de alertas si no existe
-  const container = document.createElement('div');
-  container.id = 'alert-container';
-  container.className = 'position-fixed top-0 start-50 translate-middle-x p-3';
-  container.style.zIndex = '9999';
-  document.body.appendChild(container);
-}
-
-const alertElement = document.createElement('div');
-alertElement.className = `alert alert-${type} alert-dismissible fade show`;
-alertElement.role = 'alert';
-alertElement.innerHTML = `
-  ${message}
-  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-`;
-
-const container = document.getElementById('alert-container') || document.body;
-container.appendChild(alertElement);
-
-// Auto-eliminar después de la duración especificada
-setTimeout(() => {
-  if (alertElement.parentNode) {
-    try {
-      // Intentar usar bootstrap para cerrar
-      const bsAlert = new bootstrap.Alert(alertElement);
-      bsAlert.close();
-    } catch (e) {
-      // Si falla, eliminar manualmente
-      alertElement.remove();
-    }
+  if (typeof window.showAlert === 'function') {
+    window.showAlert(type, message, duration);
+    return;
   }
-}, duration);
+
+  // Implementación alternativa si la función global no existe
+  const alertContainer = document.getElementById('alert-container');
+  if (!alertContainer) {
+    // Crear contenedor de alertas si no existe
+    const container = document.createElement('div');
+    container.id = 'alert-container';
+    container.className = 'position-fixed top-0 start-50 translate-middle-x p-3';
+    container.style.zIndex = '9999';
+    document.body.appendChild(container);
+  }
+
+  const alertElement = document.createElement('div');
+  alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+  alertElement.role = 'alert';
+  alertElement.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+
+  const container = document.getElementById('alert-container') || document.body;
+  container.appendChild(alertElement);
+
+  // Auto-eliminar después de la duración especificada
+  setTimeout(() => {
+    if (alertElement.parentNode) {
+      try {
+        // Intentar usar bootstrap para cerrar
+        const bsAlert = new bootstrap.Alert(alertElement);
+        bsAlert.close();
+      } catch (e) {
+        // Si falla, eliminar manualmente
+        alertElement.remove();
+      }
+    }
+  }, duration);
 }
 
 // Función mejorada para formatear fechas correctamente
 function formatDateCorrectly(dateString) {
-if (!dateString) return '-';
-
-try {
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return '-';
+  if (!dateString) return '-';
   
-  // Formatear como DD/MM/YYYY
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // Los meses en JS son 0-11
-  const year = date.getFullYear();
-  
-  return `${day}/${month}/${year}`;
-} catch (error) {
-  console.error("Error al formatear fecha:", error);
-  return '-';
-}
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    
+    // Formatear como DD/MM/YYYY
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // Los meses en JS son 0-11
+    const year = date.getFullYear();
+    
+    return `${day}/${month}/${year}`;
+  } catch (error) {
+    console.error("Error al formatear fecha:", error);
+    return '-';
+  }
 }
 
 // Exportar funciones

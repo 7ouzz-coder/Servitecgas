@@ -551,12 +551,35 @@ async function logSyncEvent(userId, deviceId, eventType, details = {}) {
     }
 }
 
+// Variable para rastrear el estado offline
+let _isOfflineMode = false;
+
+/**
+ * Verifica si el sistema está actualmente en modo offline
+ * @returns {boolean} - True si está en modo offline
+ */
+function isOfflineMode() {
+  return _isOfflineMode;
+}
+
+/**
+ * Establece el modo offline manualmente
+ * @param {boolean} mode - Nuevo estado offline
+ */
+function setOfflineMode(mode) {
+  _isOfflineMode = Boolean(mode);
+  console.log(`Modo offline ${_isOfflineMode ? 'activado' : 'desactivado'}`);
+}
+
+// Actualizar el módulo.exports para incluir las nuevas funciones
 module.exports = {
-    setAzureConfig,
-    isConfigValid,
-    uploadData,
-    downloadLatestData,
-    synchronize,
-    generateDeviceId,
-    logSyncEvent
+  setAzureConfig,
+  isConfigValid,
+  uploadData,
+  downloadLatestData,
+  synchronize,
+  generateDeviceId,
+  logSyncEvent,
+  isOfflineMode,
+  setOfflineMode
 };
