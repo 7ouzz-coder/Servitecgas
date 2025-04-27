@@ -112,16 +112,8 @@ app.whenReady().then(async () => {
     
     // Configurar sincronización con Azure
     try {
-      // Pasar el conjunto de manejadores registrados a setupSyncManager
+      // Pasar el conjunto de manejadores registrados a setupSync
       await syncService.setupSync(store, mainWindow);
-      
-      // Si syncService.setupSyncManager.registeredHandlers existe, actualizar nuestro conjunto
-      if (syncService.setupSyncManager && syncService.setupSyncManager.registeredHandlers) {
-        syncService.setupSyncManager.registeredHandlers.forEach(handler => {
-          registeredHandlers.add(handler);
-        });
-      }
-      
       console.log('Sincronización configurada correctamente');
     } catch (error) {
       errorHandler.captureError('setupSync', error);
@@ -136,6 +128,9 @@ app.whenReady().then(async () => {
       updateService,
       syncService
     };
+    
+    // Verificar manejadores ya registrados
+    console.log('Manejadores ya registrados antes de setupIpcHandlers:', Array.from(registeredHandlers));
     
     // Configurar manejadores IPC centralizados, pasando el conjunto de manejadores existentes
     setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers);

@@ -1085,9 +1085,6 @@ function reloadCurrentSection() {
     case 'maintenance':
       loadMaintenance();
       break;
-    case 'notifications':
-      loadNotifications();
-      break;
     case 'whatsapp':
       loadWhatsAppSection();
       break;
