@@ -5,6 +5,10 @@ const AuthService = require('./services/auth'); // Servicio de autenticación lo
 const fs = require('fs');
 const errorHandler = require('./utils/error-handler');
 const setupIpcHandlers = require('./db/ipc-handlers');
+const registeredHandlers = new Set();
+
+// Bandera para asegurar que los handlers se registren solo una vez
+let handlersRegistered = false;
 
 // Cargar variables de entorno
 require('dotenv').config();
@@ -103,9 +107,21 @@ app.whenReady().then(async () => {
     // Inicializar sistema de actualizaciones
     updateService.initUpdateSystem(mainWindow);
     
+    // Crear un conjunto para rastrear todos los manejadores IPC registrados
+    const registeredHandlers = new Set();
+    
     // Configurar sincronización con Azure
     try {
+      // Pasar el conjunto de manejadores registrados a setupSyncManager
       await syncService.setupSync(store, mainWindow);
+      
+      // Si syncService.setupSyncManager.registeredHandlers existe, actualizar nuestro conjunto
+      if (syncService.setupSyncManager && syncService.setupSyncManager.registeredHandlers) {
+        syncService.setupSyncManager.registeredHandlers.forEach(handler => {
+          registeredHandlers.add(handler);
+        });
+      }
+      
       console.log('Sincronización configurada correctamente');
     } catch (error) {
       errorHandler.captureError('setupSync', error);
@@ -121,8 +137,8 @@ app.whenReady().then(async () => {
       syncService
     };
     
-    // Configurar manejadores IPC centralizados
-    setupIpcHandlers(ipcMain, store, services, mainWindow);
+    // Configurar manejadores IPC centralizados, pasando el conjunto de manejadores existentes
+    setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers);
     
   } catch (error) {
     errorHandler.captureError('app.whenReady', error);

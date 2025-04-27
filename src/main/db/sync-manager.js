@@ -21,6 +21,9 @@ let deviceId = null;
  * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
  */
 function setupSyncManager(mainWindow) {
+  // Registrar un conjunto de manejadores y mantenerlo
+  const registeredHandlers = new Set();
+  
   // Inicializar identificador único para este dispositivo
   initDeviceId();
   
@@ -28,13 +31,18 @@ function setupSyncManager(mainWindow) {
   initAzureConfig();
   
   // Manejadores IPC para sincronización
-  setupSyncHandlers(mainWindow);
+  const updatedHandlers = setupSyncHandlers(mainWindow, registeredHandlers);
   
   // Configurar sincronización automática periódica
   setupAutoSync(mainWindow);
   
   // Escuchar eventos de conexión para sincronizar cuando se restablezca la conexión
   setupConnectivityListeners(mainWindow);
+  
+  // Añadir propiedad al objeto para que sea accesible desde el exterior
+  setupSyncManager.registeredHandlers = updatedHandlers;
+  
+  return updatedHandlers; // Devolver los manejadores registrados
 }
 
 /**
@@ -121,14 +129,26 @@ function initAzureConfig() {
  * Configura los manejadores IPC para la sincronización
  * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
  */
-function setupSyncHandlers(mainWindow) {
+function setupSyncHandlers(mainWindow, registeredHandlers = null) {
+  const handlers = registeredHandlers || new Set();
+  
+  // Función para registrar un manejador de forma segura
+  const safeHandle = (channel, handler) => {
+    if (handlers.has(channel)) {
+      console.log(`Manejador para '${channel}' ya registrado en sync-manager, omitiendo...`);
+      return;
+    }
+    ipcMain.handle(channel, handler);
+    handlers.add(channel);
+  };
+  
   // Sincronizar datos
-  ipcMain.handle('sync-data', async () => {
+  safeHandle('sync-data', async () => {
     return await synchronize(mainWindow);
   });
   
   // Obtener estado de sincronización
-  ipcMain.handle('get-sync-status', () => {
+  safeHandle('get-sync-status', () => {
     const store = setupStore();
     const pendingChanges = store.get('pendingChanges') || [];
     
@@ -141,12 +161,12 @@ function setupSyncHandlers(mainWindow) {
   });
   
   // Obtener configuración de Azure
-  ipcMain.handle('get-azure-config', () => {
+  safeHandle('get-azure-config', () => {
     return azureConfig.initAzureConfig();
   });
   
   // Actualizar configuración de Azure
-  ipcMain.handle('update-azure-config', async (event, newConfig) => {
+  safeHandle('update-azure-config', async (event, newConfig) => {
     try {
       // Actualizar configuración
       const updatedConfig = azureConfig.updateAzureConfig(newConfig);
@@ -187,7 +207,7 @@ function setupSyncHandlers(mainWindow) {
   });
   
   // Verificar conexión con Azure
-  ipcMain.handle('check-azure-connection', async () => {
+  safeHandle('check-azure-connection', async () => {
     try {
       // Intentar descargar algún dato para verificar
       const config = azureConfig.initAzureConfig();
@@ -248,7 +268,7 @@ function setupSyncHandlers(mainWindow) {
   });
   
   // Forzar descarga desde Azure
-  ipcMain.handle('force-download-from-azure', async () => {
+  safeHandle('force-download-from-azure', async () => {
     try {
       if (syncInProgress) {
         return { 
@@ -357,7 +377,7 @@ function setupSyncHandlers(mainWindow) {
   });
   
   // Forzar subida a Azure
-  ipcMain.handle('force-upload-to-azure', async () => {
+  safeHandle('force-upload-to-azure', async () => {
     try {
       if (syncInProgress) {
         return { 
@@ -453,7 +473,7 @@ function setupSyncHandlers(mainWindow) {
   });
   
   // Activar/desactivar sincronización automática
-  ipcMain.handle('set-auto-sync', async (event, enabled) => {
+  safeHandle('set-auto-sync', async (event, enabled) => {
     try {
       // Actualizar configuración
       const config = azureConfig.initAzureConfig();
@@ -481,7 +501,7 @@ function setupSyncHandlers(mainWindow) {
   });
   
   // Restablecer estado de sincronización
-  ipcMain.handle('reset-sync-state', async () => {
+  safeHandle('reset-sync-state', async () => {
     try {
       // Restablecer timestamp de última sincronización
       azureConfig.updateLastSyncTime(null);
@@ -499,6 +519,7 @@ function setupSyncHandlers(mainWindow) {
       };
     }
   });
+  return handlers;
 }
 
 /**

@@ -12,12 +12,22 @@ const azureConfig = require('../azure/config');
  * @param {Object} services - Servicios disponibles (authService, whatsappService, etc.)
  * @param {BrowserWindow} mainWindow - Ventana principal para notificaciones
  */
-module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow) {
+module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers = new Set()) {
   const { authService, whatsappService, backupService, updateService, syncService } = services;
+  
+  // Función de ayuda para registrar un manejador solo si no existe aún
+  const safeHandle = (channel, handler) => {
+    if (registeredHandlers.has(channel)) {
+      console.log(`Manejador para '${channel}' ya registrado, omitiendo...`);
+      return;
+    }
+    ipcMain.handle(channel, handler);
+    registeredHandlers.add(channel);
+  };
   
   // <-- AUTENTICACIÓN -->
   
-  ipcMain.handle('login', async (event, credentials) => {
+  safeHandle('login', async (event, credentials) => {
     const result = authService.login(credentials.username, credentials.password);
     
     // Si el login es exitoso, notificar a la interfaz
@@ -31,7 +41,8 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return result;
   });
   
-  ipcMain.handle('logout', () => {
+  // Continúa con el resto de los manejadores, pero cambiando ipcMain.handle por safeHandle
+  safeHandle('logout', () => {
     const result = authService.logout();
     
     // Notificar a la interfaz
@@ -44,15 +55,15 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return result;
   });
   
-  ipcMain.handle('check-auth', () => {
+  safeHandle('check-auth', () => {
     return authService.checkAuth();
   });
   
-  ipcMain.handle('get-user-info', () => {
+  safeHandle('get-user-info', () => {
     return authService.getCurrentUser();
   });
   
-  ipcMain.handle('update-user', (event, userData) => {
+  safeHandle('update-user', (event, userData) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser) {
       return { success: false, message: 'No hay sesión activa' };
@@ -61,7 +72,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return authService.updateUser(currentUser.id, userData);
   });
   
-  ipcMain.handle('change-password', (event, { currentPassword, newPassword }) => {
+  safeHandle('change-password', (event, { currentPassword, newPassword }) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser) {
       return { success: false, message: 'No hay sesión activa' };
@@ -71,7 +82,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Administración de usuarios (solo para admins)
-  ipcMain.handle('list-users', () => {
+  safeHandle('list-users', () => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -80,7 +91,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return { success: true, users: authService.listUsers() };
   });
   
-  ipcMain.handle('create-user', (event, userData) => {
+  safeHandle('create-user', (event, userData) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -89,7 +100,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return authService.createUser(userData);
   });
   
-  ipcMain.handle('update-user-admin', (event, userId, userData) => {
+  safeHandle('update-user-admin', (event, userId, userData) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -98,7 +109,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return authService.updateUser(userId, userData);
   });
   
-  ipcMain.handle('delete-user', (event, userId) => {
+  safeHandle('delete-user', (event, userId) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -109,7 +120,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
 
   // <-- CLIENTES -->
   
-  ipcMain.handle('get-clients', () => {
+  safeHandle('get-clients', () => {
     // Verificar autenticación
     if (!authService.checkAuth().isAuthenticated) {
       return [];
@@ -118,7 +129,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return store.get('clients') || [];
   });
 
-  ipcMain.handle('add-client', (event, client) => {
+  safeHandle('add-client', (event, client) => {
     try {
       // Verificar autenticación
       if (!authService.checkAuth().isAuthenticated) {
@@ -154,7 +165,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     }
   });
 
-  ipcMain.handle('update-client', (event, client) => {
+  safeHandle('update-client', (event, client) => {
     const clients = store.get('clients') || [];
     const index = clients.findIndex(c => c.id === client.id);
     
@@ -180,7 +191,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return null;
   });
 
-  ipcMain.handle('delete-client', (event, clientId) => {
+  safeHandle('delete-client', (event, clientId) => {
     const clients = store.get('clients') || [];
     const clientToDelete = clients.find(c => c.id === clientId);
     
@@ -212,11 +223,11 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
 
   // <-- INSTALACIONES -->
   
-  ipcMain.handle('get-installations', () => {
+  safeHandle('get-installations', () => {
     return store.get('installations') || [];
   });
 
-  ipcMain.handle('add-installation', (event, installation) => {
+  safeHandle('add-installation', (event, installation) => {
     const installations = store.get('installations') || [];
     
     // Asignar IDs a componentes si no los tienen
@@ -245,7 +256,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return newInstallation;
   });
 
-  ipcMain.handle('update-installation', (event, installation) => {
+  safeHandle('update-installation', (event, installation) => {
     const installations = store.get('installations') || [];
     const index = installations.findIndex(i => i.id === installation.id);
     
@@ -278,7 +289,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     return null;
   });
 
-  ipcMain.handle('delete-installation', (event, installationId) => {
+  safeHandle('delete-installation', (event, installationId) => {
     const installations = store.get('installations') || [];
     const installationToDelete = installations.find(i => i.id === installationId);
     
@@ -299,28 +310,28 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
 
   // <-- MANTENIMIENTO -->
   
-  ipcMain.handle('get-upcoming-maintenance', () => {
+  safeHandle('get-upcoming-maintenance', () => {
     return checkUpcomingMaintenance(store, 30); // Próximos 30 días
   });
 
-  ipcMain.handle('register-maintenance', (event, data) => {
+  safeHandle('register-maintenance', (event, data) => {
     return registerMaintenance(store, data);
   });
 
-  ipcMain.handle('calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
+  safeHandle('calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
     return calculateNextMaintenanceDate(lastMaintenanceDate, frequency);
   });
 
   // <-- WHATSAPP -->
   
   // Verificar si WhatsApp está conectado
-  ipcMain.handle('is-whatsapp-connected', () => {
+  safeHandle('is-whatsapp-connected', () => {
     if (!whatsappService) return false;
     return whatsappService.isWhatsAppConnected();
   });
 
   // Inicializar WhatsApp explícitamente
-  ipcMain.handle('initialize-whatsapp', async () => {
+  safeHandle('initialize-whatsapp', async () => {
     if (!whatsappService) {
       return { success: false, message: 'Servicio WhatsApp no disponible' };
     }
@@ -338,7 +349,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
 
   // Cerrar sesión de WhatsApp
-  ipcMain.handle('logout-whatsapp', async () => {
+  safeHandle('logout-whatsapp', async () => {
     if (!whatsappService) {
       return { success: false, message: 'Servicio WhatsApp no disponible' };
     }
@@ -356,7 +367,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
 
   // Enviar mensaje WhatsApp (incluye acción de conectar)
-  ipcMain.handle('send-whatsapp-message', async (event, messageData) => {
+  safeHandle('send-whatsapp-message', async (event, messageData) => {
     if (!whatsappService) {
       return { success: false, message: 'Servicio WhatsApp no disponible' };
     }
@@ -414,7 +425,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
 
   // Obtener historial de mensajes WhatsApp
-  ipcMain.handle('get-whatsapp-message-history', () => {
+  safeHandle('get-whatsapp-message-history', () => {
     if (!whatsappService) return [];
     
     try {
@@ -428,7 +439,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   // <-- RESPALDOS Y RESTAURACIÓN -->
   
   // Crear respaldo manual
-  ipcMain.handle('create-backup', async () => {
+  safeHandle('create-backup', async () => {
     if (!backupService) {
       return { success: false, message: 'Servicio de respaldo no disponible' };
     }
@@ -466,7 +477,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Obtener lista de respaldos
-  ipcMain.handle('get-backup-list', async () => {
+  safeHandle('get-backup-list', async () => {
     if (!backupService) return [];
     
     try {
@@ -478,7 +489,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Restaurar respaldo
-  ipcMain.handle('restore-backup', async (event, backupPath) => {
+  safeHandle('restore-backup', async (event, backupPath) => {
     if (!backupService) {
       return { success: false, message: 'Servicio de respaldo no disponible' };
     }
@@ -540,7 +551,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   // <-- ACTUALIZACIONES -->
   
   // Verificar actualizaciones
-  ipcMain.handle('check-updates', async () => {
+  safeHandle('check-updates', async () => {
     if (!updateService) {
       return { success: false, message: 'Servicio de actualizaciones no disponible' };
     }
@@ -575,11 +586,11 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
 
   // <-- UTILIDADES -->
   
-  ipcMain.handle('generate-id', () => {
+  safeHandle('generate-id', () => {
     return generateId();
   });
   
-  ipcMain.handle('format-date', (event, dateString) => {
+  safeHandle('format-date', (event, dateString) => {
     if (!dateString) return '';
     
     try {
@@ -594,24 +605,26 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   // <-- SINCRONIZACIÓN -->
   
   // Sincronizar datos
-  ipcMain.handle('sync-data', async () => {
-    if (!syncService) {
-      return { success: false, message: 'Servicio de sincronización no disponible' };
-    }
-    
-    try {
-      return await syncService.synchronize(store, mainWindow);
-    } catch (error) {
-      console.error('Error en sincronización manual:', error);
-      return {
-        success: false,
-        message: `Error: ${error.message}`
-      };
-    }
-  });
+  if (syncService) {
+    safeHandle('sync-data', async () => {
+      if (!syncService) {
+        return { success: false, message: 'Servicio de sincronización no disponible' };
+      }
+      
+      try {
+        return await syncService.synchronize(store, mainWindow);
+      } catch (error) {
+        console.error('Error en sincronización manual:', error);
+        return {
+          success: false,
+          message: `Error: ${error.message}`
+        };
+      }
+    });
+  }
   
   // Obtener estado de sincronización
-  ipcMain.handle('get-sync-status', () => {
+  safeHandle('get-sync-status', () => {
     if (!syncService) {
       return {
         lastSync: null,
@@ -626,12 +639,12 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Obtener configuración de Azure
-  ipcMain.handle('get-azure-config', () => {
+  safeHandle('get-azure-config', () => {
     return azureConfig.initAzureConfig();
   });
   
   // Actualizar configuración de Azure
-  ipcMain.handle('update-azure-config', async (event, newConfig) => {
+  safeHandle('update-azure-config', async (event, newConfig) => {
     try {
       // Actualizar configuración
       const updatedConfig = azureConfig.updateAzureConfig(newConfig);
@@ -656,7 +669,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Verificar conexión con Azure
-  ipcMain.handle('check-azure-connection', async () => {
+  safeHandle('check-azure-connection', async () => {
     try {
       // Configuración actual
       const config = azureConfig.initAzureConfig();
@@ -688,7 +701,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Forzar descarga desde Azure
-  ipcMain.handle('force-download-from-azure', async () => {
+  safeHandle('force-download-from-azure', async () => {
     if (!syncService) {
       return { success: false, message: 'Servicio de sincronización no disponible' };
     }
@@ -705,7 +718,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Forzar subida a Azure
-  ipcMain.handle('force-upload-to-azure', async () => {
+  safeHandle('force-upload-to-azure', async () => {
     if (!syncService) {
       return { success: false, message: 'Servicio de sincronización no disponible' };
     }
@@ -722,7 +735,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Activar/desactivar sincronización automática
-  ipcMain.handle('set-auto-sync', async (event, enabled) => {
+  safeHandle('set-auto-sync', async (event, enabled) => {
     if (!syncService) {
       return { success: false, message: 'Servicio de sincronización no disponible' };
     }
@@ -739,7 +752,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Restablecer estado de sincronización
-  ipcMain.handle('reset-sync-state', async () => {
+  safeHandle('reset-sync-state', async () => {
     if (!syncService) {
       return { success: false, message: 'Servicio de sincronización no disponible' };
     }
@@ -758,7 +771,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   // <-- EXPORTAR/IMPORTAR BASE DE DATOS -->
   
   // Exportar base de datos
-  ipcMain.handle('export-database', async () => {
+  safeHandle('export-database', async () => {
     try {
       const { filePath, canceled } = await dialog.showSaveDialog({
         title: 'Exportar base de datos',
@@ -806,7 +819,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
   });
   
   // Importar base de datos
-  ipcMain.handle('import-database', async () => {
+  safeHandle('import-database', async () => {
     try {
       // Mostrar diálogo para seleccionar archivo
       const { filePaths, canceled } = await dialog.showOpenDialog({
@@ -867,5 +880,5 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow)
     }
   });
 
-  console.log('Todos los manejadores IPC configurados correctamente');
+  console.log('Handlers IPC configurados: ' + Array.from(registeredHandlers).join(', '));
 }

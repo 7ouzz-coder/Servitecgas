@@ -15,6 +15,11 @@ let reconnectInterval = null;
 let messageHistory = [];
 let messageHistoryPath = null;
 
+// Flags para evitar mensajes duplicados
+let lastQRSent = null;
+let lastQRTimestamp = 0;
+let notificationThrottleMap = new Map();
+
 /**
  * Configura el servicio de WhatsApp
  * @param {BrowserWindow} mainWindow - Ventana principal de la aplicación
@@ -51,6 +56,24 @@ function setupWhatsAppService(mainWindow) {
 }
 
 /**
+ * Función para limitar las notificaciones para evitar duplicados
+ * @param {string} type - Tipo de notificación
+ * @param {Function} sendFunc - Función para enviar la notificación
+ * @param {number} throttleTime - Tiempo mínimo entre notificaciones en ms
+ */
+function throttledNotification(type, sendFunc, throttleTime = 2000) {
+  const now = Date.now();
+  const lastTime = notificationThrottleMap.get(type) || 0;
+  
+  if (now - lastTime > throttleTime) {
+    sendFunc();
+    notificationThrottleMap.set(type, now);
+  } else {
+    console.log(`Notificación de tipo ${type} ignorada (throttle: ${throttleTime}ms)`);
+  }
+}
+
+/**
  * Inicializa el cliente de WhatsApp con manejo mejorado de sesión y reconexión
  * @returns {Promise<void>}
  */
@@ -58,9 +81,11 @@ async function initializeWhatsAppClient() {
   if (initializationInProgress) {
     console.log('Inicialización de WhatsApp ya en progreso');
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      mainWindowRef.webContents.send('show-alert', {
-        type: 'warning',
-        message: 'Ya hay una inicialización de WhatsApp en progreso'
+      throttledNotification('init-progress', () => {
+        mainWindowRef.webContents.send('show-alert', {
+          type: 'warning',
+          message: 'Ya hay una inicialización de WhatsApp en progreso'
+        });
       });
     }
     return;
@@ -153,6 +178,17 @@ async function initializeWhatsAppClient() {
       // Reiniciar contador de reintentos cuando se muestra un QR
       reconnectAttempts = 0;
       
+      // Evitar mostrar el mismo QR varias veces en un corto periodo de tiempo
+      const now = Date.now();
+      if (lastQRSent === qr && now - lastQRTimestamp < 10000) {
+        console.log('QR duplicado ignorado (mismo código en menos de 10s)');
+        return;
+      }
+      
+      // Guardar este QR como el último enviado
+      lastQRSent = qr;
+      lastQRTimestamp = now;
+      
       // Verificar que la ventana principal existe antes de enviar
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
         try {
@@ -203,10 +239,13 @@ async function initializeWhatsAppClient() {
       
       // Notificar al frontend
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        mainWindowRef.webContents.send('whatsapp-ready');
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'success',
-          message: 'WhatsApp conectado correctamente'
+        // Controlar frecuencia para evitar mensajes duplicados
+        throttledNotification('whatsapp-ready', () => {
+          mainWindowRef.webContents.send('whatsapp-ready');
+          mainWindowRef.webContents.send('show-alert', {
+            type: 'success',
+            message: 'WhatsApp conectado correctamente'
+          });
         });
       }
     });
@@ -228,10 +267,13 @@ async function initializeWhatsAppClient() {
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
         console.log('Notificando al frontend sobre fallo de autenticación');
-        mainWindowRef.webContents.send('whatsapp-auth-failure');
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'error',
-          message: 'Error de autenticación en WhatsApp'
+        // Controlar frecuencia para evitar mensajes duplicados
+        throttledNotification('auth-failure', () => {
+          mainWindowRef.webContents.send('whatsapp-auth-failure');
+          mainWindowRef.webContents.send('show-alert', {
+            type: 'error',
+            message: 'Error de autenticación en WhatsApp'
+          });
         });
       }
     });
@@ -243,10 +285,13 @@ async function initializeWhatsAppClient() {
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
         console.log('Notificando al frontend sobre desconexión');
-        mainWindowRef.webContents.send('whatsapp-disconnected');
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'warning',
-          message: 'WhatsApp se ha desconectado'
+        // Controlar frecuencia para evitar mensajes duplicados
+        throttledNotification('disconnected', () => {
+          mainWindowRef.webContents.send('whatsapp-disconnected');
+          mainWindowRef.webContents.send('show-alert', {
+            type: 'warning',
+            message: 'WhatsApp se ha desconectado'
+          });
         });
       }
       
@@ -267,10 +312,13 @@ async function initializeWhatsAppClient() {
       console.log('WhatsApp autenticado correctamente');
       
       if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        mainWindowRef.webContents.send('whatsapp-authenticated');
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'info',
-          message: 'WhatsApp autenticado correctamente. Cargando...'
+        // Controlar frecuencia para evitar mensajes duplicados
+        throttledNotification('authenticated', () => {
+          mainWindowRef.webContents.send('whatsapp-authenticated');
+          mainWindowRef.webContents.send('show-alert', {
+            type: 'info',
+            message: 'WhatsApp autenticado correctamente. Cargando...'
+          });
         });
       }
     });
@@ -285,10 +333,13 @@ async function initializeWhatsAppClient() {
     initializationInProgress = false;
     
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      mainWindowRef.webContents.send('whatsapp-initialization-failed', { error: error.message });
-      mainWindowRef.webContents.send('show-alert', {
-        type: 'error',
-        message: `Error crítico al configurar WhatsApp: ${error.message}`
+      // Controlar frecuencia para evitar mensajes duplicados
+      throttledNotification('init-error', () => {
+        mainWindowRef.webContents.send('whatsapp-initialization-failed', { error: error.message });
+        mainWindowRef.webContents.send('show-alert', {
+          type: 'error',
+          message: `Error crítico al configurar WhatsApp: ${error.message}`
+        });
       });
     }
     
@@ -328,9 +379,11 @@ function handleSessionReconnection() {
       // Si se alcanzó el máximo de intentos, notificar al usuario
       if (!isWhatsAppReady && reconnectAttempts >= maxReconnectAttempts) {
         if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-          mainWindowRef.webContents.send('show-alert', {
-            type: 'warning',
-            message: 'No se pudo reconectar automáticamente a WhatsApp. Es posible que necesites escanear el código QR nuevamente.'
+          throttledNotification('reconnect-failed', () => {
+            mainWindowRef.webContents.send('show-alert', {
+              type: 'warning',
+              message: 'No se pudo reconectar automáticamente a WhatsApp. Es posible que necesites escanear el código QR nuevamente.'
+            });
           });
         }
       }
@@ -507,10 +560,12 @@ async function logoutWhatsApp() {
     
     // Notificar al frontend
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      mainWindowRef.webContents.send('whatsapp-disconnected');
-      mainWindowRef.webContents.send('show-alert', {
-        type: 'success',
-        message: 'Sesión de WhatsApp cerrada correctamente'
+      throttledNotification('logout', () => {
+        mainWindowRef.webContents.send('whatsapp-disconnected');
+        mainWindowRef.webContents.send('show-alert', {
+          type: 'success',
+          message: 'Sesión de WhatsApp cerrada correctamente'
+        });
       });
     }
     
