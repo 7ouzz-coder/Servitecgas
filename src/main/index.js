@@ -1,3 +1,4 @@
+// src/main/index.js
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { setupStore } = require('./db/store');
@@ -5,7 +6,8 @@ const AuthService = require('./services/auth'); // Servicio de autenticación lo
 const fs = require('fs');
 const errorHandler = require('./utils/error-handler');
 const setupIpcHandlers = require('./db/ipc-handlers');
-const { setupSyncManager } = require('./db/sync-manager');
+const { safeRegisterHandler, getRegisteredHandlers } = require('./utils/events-manager');
+const { sendNotification, sendAlert } = require('./utils/notification-manager');
 
 // Cargar variables de entorno
 require('dotenv').config();
@@ -22,9 +24,6 @@ let mainWindow;
 // Variables para servicios
 let authService;
 let store;
-
-// Conjunto global para rastrear manejadores IPC registrados
-const registeredHandlers = new Set();
 
 // Función para crear la ventana principal
 function createWindow() {
@@ -109,7 +108,7 @@ app.whenReady().then(async () => {
     
     // Configurar sincronización con Azure
     try {
-      // Primero configura la sincronización con Azure, que registrará sus propios manejadores
+      // Configurar la sincronización con Azure
       await syncService.setupSync(store, mainWindow);
       console.log('Sincronización configurada correctamente');
     } catch (error) {
@@ -126,11 +125,11 @@ app.whenReady().then(async () => {
       syncService
     };
     
-    // Configurar manejadores IPC centralizados, pasando el conjunto para rastrear los ya registrados
-    setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers);
+    // Configurar manejadores IPC centralizados
+    setupIpcHandlers(ipcMain, store, services, mainWindow);
     
     console.log('Aplicación inicializada correctamente');
-    console.log('Manejadores IPC registrados:', Array.from(registeredHandlers).join(', '));
+    console.log('Manejadores IPC registrados:', getRegisteredHandlers().join(', '));
     
   } catch (error) {
     errorHandler.captureError('app.whenReady', error);

@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { app, dialog } = require('electron');
 const azureConfig = require('../azure/config');
+const { safeRegisterHandler } = require('../utils/events-manager');
+const { sendNotification, sendAlert } = require('../utils/notification-manager');
 
 /**
  * Configura los manejadores IPC para operaciones de base de datos
@@ -11,31 +13,19 @@ const azureConfig = require('../azure/config');
  * @param {Store} store - Instancia de la base de datos
  * @param {Object} services - Servicios disponibles (authService, whatsappService, etc.)
  * @param {BrowserWindow} mainWindow - Ventana principal para notificaciones
- * @param {Set} registeredHandlers - Conjunto para rastrear manejadores ya registrados
- * @returns {Set} - Conjunto actualizado de manejadores registrados
+ * @returns {void}
  */
-module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow, registeredHandlers = new Set()) {
+module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow) {
   const { authService, whatsappService, backupService, updateService, syncService } = services;
-  
-  // Función de ayuda para registrar un manejador solo si no existe aún
-  const safeHandle = (channel, handler) => {
-    if (registeredHandlers.has(channel)) {
-      console.log(`Manejador para '${channel}' ya registrado, omitiendo...`);
-      return;
-    }
-    ipcMain.handle(channel, handler);
-    registeredHandlers.add(channel);
-    console.log(`Manejador IPC registrado: ${channel}`);
-  };
   
   // <-- AUTENTICACIÓN -->
   
-  safeHandle('login', async (event, credentials) => {
+  safeRegisterHandler(ipcMain, 'login', async (event, credentials) => {
     const result = authService.login(credentials.username, credentials.password);
     
     // Si el login es exitoso, notificar a la interfaz
-    if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('auth-changed', { 
+    if (result.success) {
+      sendNotification(mainWindow, 'auth-changed', { 
         isAuthenticated: true, 
         user: result.user 
       });
@@ -44,28 +34,26 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return result;
   });
   
-  safeHandle('logout', () => {
+  safeRegisterHandler(ipcMain, 'logout', () => {
     const result = authService.logout();
     
     // Notificar a la interfaz
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('auth-changed', { 
-        isAuthenticated: false 
-      });
-    }
+    sendNotification(mainWindow, 'auth-changed', { 
+      isAuthenticated: false 
+    });
     
     return result;
   });
   
-  safeHandle('check-auth', () => {
+  safeRegisterHandler(ipcMain, 'check-auth', () => {
     return authService.checkAuth();
   });
   
-  safeHandle('get-user-info', () => {
+  safeRegisterHandler(ipcMain, 'get-user-info', () => {
     return authService.getCurrentUser();
   });
   
-  safeHandle('update-user', (event, userData) => {
+  safeRegisterHandler(ipcMain, 'update-user', (event, userData) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser) {
       return { success: false, message: 'No hay sesión activa' };
@@ -74,7 +62,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return authService.updateUser(currentUser.id, userData);
   });
   
-  safeHandle('change-password', (event, { currentPassword, newPassword }) => {
+  safeRegisterHandler(ipcMain, 'change-password', (event, { currentPassword, newPassword }) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser) {
       return { success: false, message: 'No hay sesión activa' };
@@ -84,7 +72,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
   
   // Administración de usuarios (solo para admins)
-  safeHandle('list-users', () => {
+  safeRegisterHandler(ipcMain, 'list-users', () => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -93,7 +81,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return { success: true, users: authService.listUsers() };
   });
   
-  safeHandle('create-user', (event, userData) => {
+  safeRegisterHandler(ipcMain, 'create-user', (event, userData) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -102,7 +90,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return authService.createUser(userData);
   });
   
-  safeHandle('update-user-admin', (event, userId, userData) => {
+  safeRegisterHandler(ipcMain, 'update-user-admin', (event, userId, userData) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -111,7 +99,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return authService.updateUser(userId, userData);
   });
   
-  safeHandle('delete-user', (event, userId) => {
+  safeRegisterHandler(ipcMain, 'delete-user', (event, userId) => {
     const currentUser = authService.getCurrentUser();
     if (!currentUser || currentUser.role !== 'admin') {
       return { success: false, message: 'Acceso denegado' };
@@ -122,7 +110,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
 
   // <-- CLIENTES -->
   
-  safeHandle('get-clients', () => {
+  safeRegisterHandler(ipcMain, 'get-clients', () => {
     // Verificar autenticación
     if (!authService.checkAuth().isAuthenticated) {
       return [];
@@ -131,7 +119,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return store.get('clients') || [];
   });
 
-  safeHandle('add-client', (event, client) => {
+  safeRegisterHandler(ipcMain, 'add-client', (event, client) => {
     try {
       // Verificar autenticación
       if (!authService.checkAuth().isAuthenticated) {
@@ -167,7 +155,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     }
   });
 
-  safeHandle('update-client', (event, client) => {
+  safeRegisterHandler(ipcMain, 'update-client', (event, client) => {
     const clients = store.get('clients') || [];
     const index = clients.findIndex(c => c.id === client.id);
     
@@ -193,7 +181,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return null;
   });
 
-  safeHandle('delete-client', (event, clientId) => {
+  safeRegisterHandler(ipcMain, 'delete-client', (event, clientId) => {
     const clients = store.get('clients') || [];
     const clientToDelete = clients.find(c => c.id === clientId);
     
@@ -225,11 +213,11 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
 
   // <-- INSTALACIONES -->
   
-  safeHandle('get-installations', () => {
+  safeRegisterHandler(ipcMain, 'get-installations', () => {
     return store.get('installations') || [];
   });
 
-  safeHandle('add-installation', (event, installation) => {
+  safeRegisterHandler(ipcMain, 'add-installation', (event, installation) => {
     const installations = store.get('installations') || [];
     
     // Asignar IDs a componentes si no los tienen
@@ -258,7 +246,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return newInstallation;
   });
 
-  safeHandle('update-installation', (event, installation) => {
+  safeRegisterHandler(ipcMain, 'update-installation', (event, installation) => {
     const installations = store.get('installations') || [];
     const index = installations.findIndex(i => i.id === installation.id);
     
@@ -291,7 +279,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
     return null;
   });
 
-  safeHandle('delete-installation', (event, installationId) => {
+  safeRegisterHandler(ipcMain, 'delete-installation', (event, installationId) => {
     const installations = store.get('installations') || [];
     const installationToDelete = installations.find(i => i.id === installationId);
     
@@ -312,28 +300,28 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
 
   // <-- MANTENIMIENTO -->
   
-  safeHandle('get-upcoming-maintenance', () => {
+  safeRegisterHandler(ipcMain, 'get-upcoming-maintenance', () => {
     return checkUpcomingMaintenance(store, 30); // Próximos 30 días
   });
 
-  safeHandle('register-maintenance', (event, data) => {
+  safeRegisterHandler(ipcMain, 'register-maintenance', (event, data) => {
     return registerMaintenance(store, data);
   });
 
-  safeHandle('calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
+  safeRegisterHandler(ipcMain, 'calculate-next-maintenance-date', (event, { lastMaintenanceDate, frequency }) => {
     return calculateNextMaintenanceDate(lastMaintenanceDate, frequency);
   });
 
   // <-- WHATSAPP -->
   
   // Verificar si WhatsApp está conectado
-  safeHandle('is-whatsapp-connected', () => {
+  safeRegisterHandler(ipcMain, 'is-whatsapp-connected', () => {
     if (!whatsappService) return false;
     return whatsappService.isWhatsAppConnected();
   });
 
   // Inicializar WhatsApp explícitamente
-  safeHandle('initialize-whatsapp', async () => {
+  safeRegisterHandler(ipcMain, 'initialize-whatsapp', async () => {
     if (!whatsappService) {
       return { success: false, message: 'Servicio WhatsApp no disponible' };
     }
@@ -351,7 +339,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
 
   // Cerrar sesión de WhatsApp
-  safeHandle('logout-whatsapp', async () => {
+  safeRegisterHandler(ipcMain, 'logout-whatsapp', async () => {
     if (!whatsappService) {
       return { success: false, message: 'Servicio WhatsApp no disponible' };
     }
@@ -369,7 +357,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
 
   // Enviar mensaje WhatsApp (incluye acción de conectar)
-  safeHandle('send-whatsapp-message', async (event, messageData) => {
+  safeRegisterHandler(ipcMain, 'send-whatsapp-message', async (event, messageData) => {
     if (!whatsappService) {
       return { success: false, message: 'Servicio WhatsApp no disponible' };
     }
@@ -378,12 +366,10 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
       // Si es una solicitud de conexión, iniciar el proceso de autenticación
       if (messageData.action === 'connect') {
         // Notificar al frontend
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('whatsapp-status-changed', {
-            status: 'connecting',
-            message: 'Iniciando conexión con WhatsApp...'
-          });
-        }
+        sendNotification(mainWindow, 'whatsapp-status-changed', {
+          status: 'connecting',
+          message: 'Iniciando conexión con WhatsApp...'
+        });
         
         // Inicializar cliente
         setTimeout(() => {
@@ -392,11 +378,9 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
               console.error('Error al inicializar WhatsApp:', error);
               
               // Notificar error al frontend
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('whatsapp-initialization-failed', {
-                  error: error.message || 'Error desconocido'
-                });
-              }
+              sendNotification(mainWindow, 'whatsapp-initialization-failed', {
+                error: error.message || 'Error desconocido'
+              });
             });
         }, 500);
         
@@ -427,7 +411,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
 
   // Obtener historial de mensajes WhatsApp
-  safeHandle('get-whatsapp-message-history', () => {
+  safeRegisterHandler(ipcMain, 'get-whatsapp-message-history', () => {
     if (!whatsappService) return [];
     
     try {
@@ -441,7 +425,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   // <-- RESPALDOS Y RESTAURACIÓN -->
   
   // Crear respaldo manual
-  safeHandle('create-backup', async () => {
+  safeRegisterHandler(ipcMain, 'create-backup', async () => {
     if (!backupService) {
       return { success: false, message: 'Servicio de respaldo no disponible' };
     }
@@ -479,7 +463,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
   
   // Obtener lista de respaldos
-  safeHandle('get-backup-list', async () => {
+  safeRegisterHandler(ipcMain, 'get-backup-list', async () => {
     if (!backupService) return [];
     
     try {
@@ -491,7 +475,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
   
   // Restaurar respaldo
-  safeHandle('restore-backup', async (event, backupPath) => {
+  safeRegisterHandler(ipcMain, 'restore-backup', async (event, backupPath) => {
     if (!backupService) {
       return { success: false, message: 'Servicio de respaldo no disponible' };
     }
@@ -532,9 +516,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
       const result = await backupService.restoreBackup(backupPath);
       
       // Notificar a la interfaz
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('database-imported');
-      }
+      sendNotification(mainWindow, 'database-imported', null);
       
       return {
         success: true,
@@ -553,7 +535,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   // <-- ACTUALIZACIONES -->
   
   // Verificar actualizaciones
-  safeHandle('check-updates', async () => {
+  safeRegisterHandler(ipcMain, 'check-updates', async () => {
     if (!updateService) {
       return { success: false, message: 'Servicio de actualizaciones no disponible' };
     }
@@ -588,11 +570,11 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
 
   // <-- UTILIDADES -->
   
-  safeHandle('generate-id', () => {
+  safeRegisterHandler(ipcMain, 'generate-id', () => {
     return generateId();
   });
   
-  safeHandle('format-date', (event, dateString) => {
+  safeRegisterHandler(ipcMain, 'format-date', (event, dateString) => {
     if (!dateString) return '';
     
     try {
@@ -605,178 +587,156 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
   
   // <-- SINCRONIZACIÓN -->
-  // Registramos solo si el servicio existe y no se han registrado antes
-  if (syncService) {
-    // Solo si los manejadores no existen ya
-    if (!registeredHandlers.has('sync-data')) {
-      safeHandle('sync-data', async () => {
-        try {
-          return await syncService.synchronize(store, mainWindow);
-        } catch (error) {
-          console.error('Error en sincronización manual:', error);
-          return {
-            success: false,
-            message: `Error: ${error.message}`
-          };
-        }
-      });
+  
+  safeRegisterHandler(ipcMain, 'sync-data', async () => {
+    try {
+      return await syncService.synchronize(store, mainWindow);
+    } catch (error) {
+      console.error('Error en sincronización manual:', error);
+      return {
+        success: false,
+        message: `Error: ${error.message}`
+      };
+    }
+  });
+  
+  safeRegisterHandler(ipcMain, 'get-sync-status', () => {
+    return syncService.getSyncStatus(store);
+  });
+  
+  safeRegisterHandler(ipcMain, 'check-azure-connection', async () => {
+    try {
+      // Configuración actual
+      const config = azureConfig.initAzureConfig();
+      
+      if (!config.connectionString) {
+        return {
+          success: false,
+          message: 'No hay configuración de conexión. Configure la cadena de conexión de Azure.'
+        };
+      }
+      
+      // Comprobar si la configuración es válida
+      if (!syncService || typeof syncService.checkConnection !== 'function') {
+        return {
+          success: false,
+          message: 'Servicio de sincronización no disponible o no configurado correctamente'
+        };
+      }
+      
+      // Intentar una operación simple para verificar conexión
+      const result = await syncService.checkConnection();
+      return result;
+    } catch (error) {
+      console.error('Error al verificar conexión con Azure:', error);
+      return {
+        success: false,
+        message: `Error al verificar conexión: ${error.message}`
+      };
+    }
+  });
+  
+  safeRegisterHandler(ipcMain, 'force-download-from-azure', async () => {
+    if (!syncService || typeof syncService.forceDownload !== 'function') {
+      return { 
+        success: false, 
+        message: 'Operación no soportada' 
+      };
     }
     
-    if (!registeredHandlers.has('get-sync-status')) {
-      safeHandle('get-sync-status', () => {
-        return syncService.getSyncStatus(store);
-      });
+    try {
+      return await syncService.forceDownload(store, mainWindow);
+    } catch (error) {
+      console.error('Error en descarga forzada:', error);
+      return { 
+        success: false, 
+        message: `Error en descarga forzada: ${error.message}` 
+      };
+    }
+  });
+  
+  safeRegisterHandler(ipcMain, 'force-upload-to-azure', async () => {
+    if (!syncService || typeof syncService.forceUpload !== 'function') {
+      return { 
+        success: false, 
+        message: 'Operación no soportada' 
+      };
     }
     
-    // Manejadores adicionales de sincronización solo si no existen
-    if (!registeredHandlers.has('check-azure-connection')) {
-      safeHandle('check-azure-connection', async () => {
-        try {
-          // Configuración actual
-          const config = azureConfig.initAzureConfig();
-          
-          if (!config.connectionString) {
-            return {
-              success: false,
-              message: 'No hay configuración de conexión. Configure la cadena de conexión de Azure.'
-            };
-          }
-          
-          // Comprobar si está en línea
-          if (!syncService.isAzureConfigValid) {
-            return {
-              success: false,
-              message: 'Configuración de Azure no válida'
-            };
-          }
-          
-          // Intentamos una operación simple para verificar conexión
-          const result = await syncService.checkConnection();
-          return result;
-        } catch (error) {
-          console.error('Error al verificar conexión con Azure:', error);
-          return {
-            success: false,
-            message: `Error al verificar conexión: ${error.message}`
-          };
-        }
-      });
+    try {
+      return await syncService.forceUpload(store, mainWindow);
+    } catch (error) {
+      console.error('Error en subida forzada:', error);
+      return { 
+        success: false, 
+        message: `Error en subida forzada: ${error.message}` 
+      };
     }
-    
-    if (!registeredHandlers.has('force-download-from-azure')) {
-      safeHandle('force-download-from-azure', async () => {
-        if (!syncService.forceDownload) {
-          return { 
-            success: false, 
-            message: 'Operación no soportada' 
-          };
-        }
+  });
+  
+  safeRegisterHandler(ipcMain, 'set-auto-sync', async (event, enabled) => {
+    try {
+      if (!syncService || typeof syncService.setAutoSync !== 'function') {
+        // Actualizar configuración directamente
+        const config = azureConfig.initAzureConfig();
+        config.autoSyncEnabled = enabled;
+        azureConfig.updateAzureConfig(config);
         
-        try {
-          return await syncService.forceDownload(store, mainWindow);
-        } catch (error) {
-          console.error('Error en descarga forzada:', error);
-          return { 
-            success: false, 
-            message: `Error en descarga forzada: ${error.message}` 
-          };
-        }
-      });
+        return { success: true };
+      }
+      
+      return await syncService.setAutoSync(enabled, store, mainWindow);
+    } catch (error) {
+      console.error('Error al configurar sincronización automática:', error);
+      return { 
+        success: false, 
+        message: `Error: ${error.message}` 
+      };
     }
-    
-    if (!registeredHandlers.has('force-upload-to-azure')) {
-      safeHandle('force-upload-to-azure', async () => {
-        if (!syncService.forceUpload) {
-          return { 
-            success: false, 
-            message: 'Operación no soportada' 
-          };
-        }
-        
-        try {
-          return await syncService.forceUpload(store, mainWindow);
-        } catch (error) {
-          console.error('Error en subida forzada:', error);
-          return { 
-            success: false, 
-            message: `Error en subida forzada: ${error.message}` 
-          };
-        }
-      });
+  });
+  
+  safeRegisterHandler(ipcMain, 'reset-sync-state', async () => {
+    try {
+      // Restablecer timestamp de última sincronización
+      azureConfig.updateLastSyncTime(null);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error al restablecer estado de sincronización:', error);
+      return { 
+        success: false, 
+        message: `Error: ${error.message}` 
+      };
     }
-    
-    if (!registeredHandlers.has('set-auto-sync')) {
-      safeHandle('set-auto-sync', async (event, enabled) => {
-        try {
-          if (!syncService.setAutoSync) {
-            // Actualizar configuración directamente
-            const config = azureConfig.initAzureConfig();
-            config.autoSyncEnabled = enabled;
-            azureConfig.updateAzureConfig(config);
-            
-            return { success: true };
-          }
-          
-          return await syncService.setAutoSync(enabled, store, mainWindow);
-        } catch (error) {
-          console.error('Error al configurar sincronización automática:', error);
-          return { 
-            success: false, 
-            message: `Error: ${error.message}` 
-          };
-        }
-      });
+  });
+  
+  safeRegisterHandler(ipcMain, 'get-azure-config', () => {
+    return azureConfig.initAzureConfig();
+  });
+  
+  safeRegisterHandler(ipcMain, 'update-azure-config', async (event, newConfig) => {
+    try {
+      // Actualizar configuración
+      const updatedConfig = azureConfig.updateAzureConfig(newConfig);
+      
+      // Configuración adicional si syncService tiene los métodos necesarios
+      if (syncService && syncService.restartAutoSync) {
+        await syncService.restartAutoSync(store, mainWindow, updatedConfig);
+      }
+      
+      return { success: true, config: updatedConfig };
+    } catch (error) {
+      console.error('Error al actualizar configuración de Azure:', error);
+      return { 
+        success: false, 
+        message: `Error al actualizar configuración: ${error.message}` 
+      };
     }
-    
-    if (!registeredHandlers.has('reset-sync-state')) {
-      safeHandle('reset-sync-state', async () => {
-        try {
-          // Restablecer timestamp de última sincronización
-          azureConfig.updateLastSyncTime(null);
-          
-          return { success: true };
-        } catch (error) {
-          console.error('Error al restablecer estado de sincronización:', error);
-          return { 
-            success: false, 
-            message: `Error: ${error.message}` 
-          };
-        }
-      });
-    }
-    
-    if (!registeredHandlers.has('get-azure-config')) {
-      safeHandle('get-azure-config', () => {
-        return azureConfig.initAzureConfig();
-      });
-    }
-    
-    if (!registeredHandlers.has('update-azure-config')) {
-      safeHandle('update-azure-config', async (event, newConfig) => {
-        try {
-          // Actualizar configuración
-          const updatedConfig = azureConfig.updateAzureConfig(newConfig);
-          
-          // Configuración adicional si syncService tiene los métodos necesarios
-          if (syncService.restartAutoSync) {
-            await syncService.restartAutoSync(store, mainWindow, updatedConfig);
-          }
-          
-          return { success: true, config: updatedConfig };
-        } catch (error) {
-          console.error('Error al actualizar configuración de Azure:', error);
-          return { 
-            success: false, 
-            message: `Error al actualizar configuración: ${error.message}` 
-          };
-        }
-      });
-    }
-  }
+  });
   
   // <-- EXPORTAR/IMPORTAR BASE DE DATOS -->
 
-  safeHandle('export-database', async () => {
+  safeRegisterHandler(ipcMain, 'export-database', async () => {
     try {
       const { filePath, canceled } = await dialog.showSaveDialog({
         title: 'Exportar base de datos',
@@ -824,7 +784,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
   });
   
   // Importar base de datos
-  safeHandle('import-database', async () => {
+  safeRegisterHandler(ipcMain, 'import-database', async () => {
     try {
       // Mostrar diálogo para seleccionar archivo
       const { filePaths, canceled } = await dialog.showOpenDialog({
@@ -863,9 +823,7 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
       }
       
       // Notificar a la interfaz
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('database-imported');
-      }
+      sendNotification(mainWindow, 'database-imported', null);
       
       return {
         success: true,
@@ -884,6 +842,4 @@ module.exports = function setupIpcHandlers(ipcMain, store, services, mainWindow,
       };
     }
   });
-
-  return registeredHandlers;
-}
+};

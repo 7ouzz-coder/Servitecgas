@@ -2,6 +2,7 @@ const { Client } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
 const electron = require('electron');
+const { sendNotification, sendAlert } = require('../utils/notification-manager');
 
 // Variables para gestionar el cliente de WhatsApp
 let whatsappClient = null;
@@ -14,11 +15,6 @@ let maxReconnectAttempts = 3;
 let reconnectInterval = null;
 let messageHistory = [];
 let messageHistoryPath = null;
-
-// Flags para evitar mensajes duplicados
-let lastQRSent = null;
-let lastQRTimestamp = 0;
-let notificationThrottleMap = new Map();
 
 /**
  * Configura el servicio de WhatsApp
@@ -56,24 +52,6 @@ function setupWhatsAppService(mainWindow) {
 }
 
 /**
- * Función para limitar las notificaciones para evitar duplicados
- * @param {string} type - Tipo de notificación
- * @param {Function} sendFunc - Función para enviar la notificación
- * @param {number} throttleTime - Tiempo mínimo entre notificaciones en ms
- */
-function throttledNotification(type, sendFunc, throttleTime = 2000) {
-  const now = Date.now();
-  const lastTime = notificationThrottleMap.get(type) || 0;
-  
-  if (now - lastTime > throttleTime) {
-    sendFunc();
-    notificationThrottleMap.set(type, now);
-  } else {
-    console.log(`Notificación de tipo ${type} ignorada (throttle: ${throttleTime}ms)`);
-  }
-}
-
-/**
  * Inicializa el cliente de WhatsApp con manejo mejorado de sesión y reconexión
  * @returns {Promise<void>}
  */
@@ -81,12 +59,7 @@ async function initializeWhatsAppClient() {
   if (initializationInProgress) {
     console.log('Inicialización de WhatsApp ya en progreso');
     if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      throttledNotification('init-progress', () => {
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'warning',
-          message: 'Ya hay una inicialización de WhatsApp en progreso'
-        });
-      });
+      sendAlert(mainWindowRef, 'warning', 'Ya hay una inicialización de WhatsApp en progreso');
     }
     return;
   }
@@ -96,9 +69,7 @@ async function initializeWhatsAppClient() {
   
   try {
     // Notificar al frontend que estamos iniciando
-    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      mainWindowRef.webContents.send('whatsapp-initialization-started');
-    }
+    sendNotification(mainWindowRef, 'whatsapp-initialization-started', null);
     
     // Verificar si hay una sesión guardada
     let sessionData = null;
@@ -178,37 +149,15 @@ async function initializeWhatsAppClient() {
       // Reiniciar contador de reintentos cuando se muestra un QR
       reconnectAttempts = 0;
       
-      // Evitar mostrar el mismo QR varias veces en un corto periodo de tiempo
-      const now = Date.now();
-      if (lastQRSent === qr && now - lastQRTimestamp < 10000) {
-        console.log('QR duplicado ignorado (mismo código en menos de 10s)');
-        return;
-      }
+      // Enviar QR al frontend usando el nuevo sistema de notificaciones
+      sendNotification(mainWindowRef, 'whatsapp-qr', {
+        qrCode: qr,
+        qrLength: qr.length,
+        timestamp: new Date().toISOString(),
+        qrImageUrl: `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qr)}`
+      });
       
-      // Guardar este QR como el último enviado
-      lastQRSent = qr;
-      lastQRTimestamp = now;
-      
-      // Verificar que la ventana principal existe antes de enviar
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        try {
-          console.log('Enviando código QR a la interfaz de usuario');
-          
-          // Enviar objeto con múltiples formatos para compatibilidad
-          mainWindowRef.webContents.send('whatsapp-qr', {
-            qrCode: qr,
-            qrLength: qr.length,
-            timestamp: new Date().toISOString(),
-            qrImageUrl: `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qr)}`
-          });
-          
-          console.log('Código QR enviado correctamente al frontend');
-        } catch (error) {
-          console.error('Error detallado al enviar QR a la interfaz:', error);
-        }
-      } else {
-        console.error('La ventana principal no está disponible para enviar el QR');
-      }
+      console.log('Código QR enviado correctamente al frontend');
     });
     
     whatsappClient.on('ready', () => {
@@ -238,16 +187,8 @@ async function initializeWhatsAppClient() {
       }
       
       // Notificar al frontend
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        // Controlar frecuencia para evitar mensajes duplicados
-        throttledNotification('whatsapp-ready', () => {
-          mainWindowRef.webContents.send('whatsapp-ready');
-          mainWindowRef.webContents.send('show-alert', {
-            type: 'success',
-            message: 'WhatsApp conectado correctamente'
-          });
-        });
-      }
+      sendNotification(mainWindowRef, 'whatsapp-ready', null);
+      sendAlert(mainWindowRef, 'success', 'WhatsApp conectado correctamente');
     });
     
     whatsappClient.on('auth_failure', (error) => {
@@ -265,17 +206,9 @@ async function initializeWhatsAppClient() {
         }
       }
       
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        console.log('Notificando al frontend sobre fallo de autenticación');
-        // Controlar frecuencia para evitar mensajes duplicados
-        throttledNotification('auth-failure', () => {
-          mainWindowRef.webContents.send('whatsapp-auth-failure');
-          mainWindowRef.webContents.send('show-alert', {
-            type: 'error',
-            message: 'Error de autenticación en WhatsApp'
-          });
-        });
-      }
+      // Notificar al frontend
+      sendNotification(mainWindowRef, 'whatsapp-auth-failure', null);
+      sendAlert(mainWindowRef, 'error', 'Error de autenticación en WhatsApp');
     });
     
     whatsappClient.on('disconnected', (reason) => {
@@ -283,17 +216,9 @@ async function initializeWhatsAppClient() {
       isWhatsAppReady = false;
       initializationInProgress = false;
       
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        console.log('Notificando al frontend sobre desconexión');
-        // Controlar frecuencia para evitar mensajes duplicados
-        throttledNotification('disconnected', () => {
-          mainWindowRef.webContents.send('whatsapp-disconnected');
-          mainWindowRef.webContents.send('show-alert', {
-            type: 'warning',
-            message: 'WhatsApp se ha desconectado'
-          });
-        });
-      }
+      // Notificar al frontend
+      sendNotification(mainWindowRef, 'whatsapp-disconnected', null);
+      sendAlert(mainWindowRef, 'warning', 'WhatsApp se ha desconectado');
       
       // Intentar reconexión automática
       handleSessionReconnection();
@@ -303,24 +228,14 @@ async function initializeWhatsAppClient() {
     whatsappClient.on('loading_screen', (percent, message) => {
       console.log(`Cargando WhatsApp: ${percent}% - ${message}`);
       
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        mainWindowRef.webContents.send('whatsapp-loading', { percent, message });
-      }
+      sendNotification(mainWindowRef, 'whatsapp-loading', { percent, message });
     });
     
     whatsappClient.on('authenticated', () => {
       console.log('WhatsApp autenticado correctamente');
       
-      if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-        // Controlar frecuencia para evitar mensajes duplicados
-        throttledNotification('authenticated', () => {
-          mainWindowRef.webContents.send('whatsapp-authenticated');
-          mainWindowRef.webContents.send('show-alert', {
-            type: 'info',
-            message: 'WhatsApp autenticado correctamente. Cargando...'
-          });
-        });
-      }
+      sendNotification(mainWindowRef, 'whatsapp-authenticated', null);
+      sendAlert(mainWindowRef, 'info', 'WhatsApp autenticado correctamente. Cargando...');
     });
     
     // Inicializar el cliente
@@ -332,16 +247,8 @@ async function initializeWhatsAppClient() {
     console.error('Error crítico al configurar WhatsApp:', error);
     initializationInProgress = false;
     
-    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      // Controlar frecuencia para evitar mensajes duplicados
-      throttledNotification('init-error', () => {
-        mainWindowRef.webContents.send('whatsapp-initialization-failed', { error: error.message });
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'error',
-          message: `Error crítico al configurar WhatsApp: ${error.message}`
-        });
-      });
-    }
+    sendNotification(mainWindowRef, 'whatsapp-initialization-failed', { error: error.message });
+    sendAlert(mainWindowRef, 'error', `Error crítico al configurar WhatsApp: ${error.message}`);
     
     throw error; // Re-lanzar el error para manejo superior
   }
@@ -378,14 +285,7 @@ function handleSessionReconnection() {
       
       // Si se alcanzó el máximo de intentos, notificar al usuario
       if (!isWhatsAppReady && reconnectAttempts >= maxReconnectAttempts) {
-        if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-          throttledNotification('reconnect-failed', () => {
-            mainWindowRef.webContents.send('show-alert', {
-              type: 'warning',
-              message: 'No se pudo reconectar automáticamente a WhatsApp. Es posible que necesites escanear el código QR nuevamente.'
-            });
-          });
-        }
+        sendAlert(mainWindowRef, 'warning', 'No se pudo reconectar automáticamente a WhatsApp. Es posible que necesites escanear el código QR nuevamente.');
       }
       
       return;
@@ -559,15 +459,8 @@ async function logoutWhatsApp() {
     whatsappClient = null;
     
     // Notificar al frontend
-    if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-      throttledNotification('logout', () => {
-        mainWindowRef.webContents.send('whatsapp-disconnected');
-        mainWindowRef.webContents.send('show-alert', {
-          type: 'success',
-          message: 'Sesión de WhatsApp cerrada correctamente'
-        });
-      });
-    }
+    sendNotification(mainWindowRef, 'whatsapp-disconnected', null);
+    sendAlert(mainWindowRef, 'success', 'Sesión de WhatsApp cerrada correctamente');
     
     return {
       success: true,
