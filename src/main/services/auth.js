@@ -1,4 +1,3 @@
-// src/main/services/auth.js - Servicio de autenticación local
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
@@ -17,10 +16,10 @@ class AuthService {
       
       // Crear usuario administrador por defecto
       this.createUser({
-        username: 'admin',
-        password: 'admin123',
-        name: 'Administrador',
-        email: 'admin@servitecgas.com',
+        username: '7ouzz',
+        password: '1234',
+        name: '7ouzz-coder',
+        email: 'Guillermo1858@gmail.com',
         role: 'admin'
       });
     }
