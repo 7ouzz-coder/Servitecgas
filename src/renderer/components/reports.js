@@ -801,7 +801,7 @@ function showAlert(type, message, duration = 5000) {
   }, duration);
 }
 
-// Función mejorada para formatear fechas correctamente
+ // Función mejorada para formatear fechas correctamente
 function formatDateCorrectly(dateString) {
   if (!dateString) return '-';
   
