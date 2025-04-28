@@ -1,4 +1,3 @@
-// Cargar la sección de mantenimientos
 async function loadMaintenance() {
   const maintenanceSection = document.getElementById('maintenance-section');
   
@@ -89,7 +88,7 @@ async function loadMaintenance() {
         </div>
       </div>
       
-      <!-- Opciones de filtrado -->
+      <!-- Opciones de filtrado y botón de agregar -->
       <div class="row mb-4">
         <div class="col-md-4">
           <select id="maintenanceClientFilter" class="form-select">
@@ -104,9 +103,13 @@ async function loadMaintenance() {
             <option value="upcoming">Próximos (8-30 días)</option>
           </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-4 d-flex justify-content-between">
           <button id="notifyAllButton" class="btn btn-success" ${upcomingMaintenance.length === 0 ? 'disabled' : ''}>
             <i class="bi bi-whatsapp"></i> Notificar a Todos
+          </button>
+          <!-- Nuevo botón para agregar mantenimiento -->
+          <button id="addMaintenanceButton" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Agregar Mantenimiento
           </button>
         </div>
       </div>
@@ -142,7 +145,7 @@ async function loadMaintenance() {
     `;
     
     // Configurar eventos
-    setupMaintenanceEvents();
+    setupMaintenanceEvents(clients, installations);
     
   } catch (error) {
     console.error("Error crítico en mantenimientos:", error);
@@ -272,8 +275,8 @@ function formatDateCorrectly(dateString) {
   }
 }
 
-// Configurar eventos para la sección de mantenimientos - Versión simplificada
-function setupMaintenanceEvents() {
+// Configurar eventos para la sección de mantenimientos
+function setupMaintenanceEvents(clients, installations) {
   // Filtro por cliente
   const clientFilter = document.getElementById('maintenanceClientFilter');
   if (clientFilter) {
@@ -284,6 +287,14 @@ function setupMaintenanceEvents() {
   const urgencyFilter = document.getElementById('maintenanceUrgencyFilter');
   if (urgencyFilter) {
     urgencyFilter.addEventListener('change', filterMaintenance);
+  }
+  
+  // Botón para agregar mantenimiento (NUEVO)
+  const addMaintenanceButton = document.getElementById('addMaintenanceButton');
+  if (addMaintenanceButton) {
+    addMaintenanceButton.addEventListener('click', () => {
+      showAddMaintenanceModal(clients, installations);
+    });
   }
   
   // Botones para registrar mantenimiento
@@ -332,42 +343,103 @@ function setupMaintenanceEvents() {
   }
 }
 
-// Función para mostrar el modal de registro de mantenimiento
-function showMaintenanceRegistrationModal(installationId, componentId) {
+// Función para mostrar el modal de agregar mantenimiento
+function showAddMaintenanceModal(clients, installations) {
   // Verificar si ya existe el modal y eliminarlo
-  const existingModal = document.getElementById('registerMaintenanceModal');
+  const existingModal = document.getElementById('addMaintenanceModal');
   if (existingModal) {
     existingModal.remove();
   }
   
-  // Crear modal HTML
+  // Crear contenido del modal
   const modalHtml = `
-    <div class="modal fade" id="registerMaintenanceModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog">
+    <div class="modal fade" id="addMaintenanceModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Registrar Mantenimiento</h5>
+            <h5 class="modal-title">Agregar Mantenimiento</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <form id="registerMaintenanceForm">
-              <input type="hidden" id="maintenance-installation-id" value="${installationId}">
-              <input type="hidden" id="maintenance-component-id" value="${componentId}">
-              
+            <form id="addMaintenanceForm">
+              <!-- Selección de cliente -->
               <div class="mb-3">
-                <label for="maintenance-date" class="form-label">Fecha de mantenimiento</label>
-                <input type="date" class="form-control" id="maintenance-date" value="${new Date().toISOString().split('T')[0]}" required>
+                <label for="maintenanceClientSelect" class="form-label">Cliente *</label>
+                <select class="form-select" id="maintenanceClientSelect" required>
+                  <option value="">Seleccionar cliente...</option>
+                  ${clients.map(client => `
+                    <option value="${client.id}">${client.name}</option>
+                  `).join('')}
+                </select>
+              </div>
+              
+              <!-- Selección de instalación -->
+              <div class="mb-3">
+                <label for="maintenanceInstallationSelect" class="form-label">Instalación / Dirección *</label>
+                <select class="form-select" id="maintenanceInstallationSelect" required disabled>
+                  <option value="">Seleccione un cliente primero</option>
+                </select>
+              </div>
+              
+              <!-- Selección de componente -->
+              <div class="mb-3">
+                <label for="maintenanceComponentSelect" class="form-label">Componente *</label>
+                <select class="form-select" id="maintenanceComponentSelect" required disabled>
+                  <option value="">Seleccione una instalación primero</option>
+                </select>
+              </div>
+              
+              <!-- Detalles del componente -->
+              <div class="component-details card p-3 mb-3" style="display: none;" id="componentDetailsCard">
+                <h6 class="card-subtitle mb-2 text-muted">Detalles del componente</h6>
+                <div class="row">
+                  <div class="col-md-6">
+                    <p><strong>Marca/Modelo:</strong> <span id="componentModelDisplay">-</span></p>
+                  </div>
+                  <div class="col-md-6">
+                    <p><strong>Última mantención:</strong> <span id="componentLastMaintenanceDisplay">-</span></p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Fechas y notas -->
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label for="maintenanceDate" class="form-label">Fecha de mantención *</label>
+                    <input type="date" class="form-control" id="maintenanceDate" required value="${new Date().toISOString().split('T')[0]}">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label for="maintenanceFrequency" class="form-label">Frecuencia de mantención (meses)</label>
+                    <input type="number" class="form-control" id="maintenanceFrequency" min="1" max="60" value="12">
+                    <small class="form-text text-muted">La próxima mantención se calculará automáticamente</small>
+                  </div>
+                </div>
               </div>
               
               <div class="mb-3">
-                <label for="maintenance-notes" class="form-label">Notas</label>
-                <textarea class="form-control" id="maintenance-notes" rows="3" placeholder="Observaciones o detalles del mantenimiento realizado"></textarea>
+                <label for="maintenanceNotes" class="form-label">Notas / Observaciones</label>
+                <textarea class="form-control" id="maintenanceNotes" rows="3" placeholder="Observaciones o detalles del mantenimiento"></textarea>
+              </div>
+              
+              <div class="mb-3">
+                <label for="nextMaintenanceDate" class="form-label">Próxima mantención (calculada)</label>
+                <input type="date" class="form-control" id="nextMaintenanceDate" readonly>
+              </div>
+              
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="sendNotificationCheck">
+                <label class="form-check-label" for="sendNotificationCheck">
+                  Enviar notificación al cliente
+                </label>
               </div>
             </form>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-primary" id="save-maintenance-btn">Registrar</button>
+            <button type="button" class="btn btn-primary" id="saveMaintenanceBtn">Guardar</button>
           </div>
         </div>
       </div>
@@ -380,57 +452,345 @@ function showMaintenanceRegistrationModal(installationId, componentId) {
   document.body.appendChild(tempDiv.firstChild);
   
   // Mostrar modal
-  const modal = new bootstrap.Modal(document.getElementById('registerMaintenanceModal'));
+  const modal = new bootstrap.Modal(document.getElementById('addMaintenanceModal'));
   modal.show();
   
-  // Configurar botón de guardar
-  const saveButton = document.getElementById('save-maintenance-btn');
+  // Configurar eventos
+  setupAddMaintenanceModalEvents(installations);
+  
+  // Eliminar modal del DOM cuando se cierre
+  document.getElementById('addMaintenanceModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+// Función para configurar eventos del modal de agregar mantenimiento
+function setupAddMaintenanceModalEvents(installations) {
+  const clientSelect = document.getElementById('maintenanceClientSelect');
+  const installationSelect = document.getElementById('maintenanceInstallationSelect');
+  const componentSelect = document.getElementById('maintenanceComponentSelect');
+  const maintenanceDate = document.getElementById('maintenanceDate');
+  const frequencyInput = document.getElementById('maintenanceFrequency');
+  const nextMaintenanceDate = document.getElementById('nextMaintenanceDate');
+  const componentDetailsCard = document.getElementById('componentDetailsCard');
+  const saveButton = document.getElementById('saveMaintenanceBtn');
+  
+  // Al seleccionar un cliente, cargar sus instalaciones
+  if (clientSelect) {
+    clientSelect.addEventListener('change', () => {
+      const clientId = clientSelect.value;
+      installationSelect.innerHTML = '<option value="">Seleccionar instalación...</option>';
+      componentSelect.innerHTML = '<option value="">Seleccione una instalación primero</option>';
+      componentDetailsCard.style.display = 'none';
+      
+      if (clientId) {
+        // Habilitar select de instalación
+        installationSelect.disabled = false;
+        
+        // Filtrar instalaciones del cliente
+        const clientInstallations = installations.filter(inst => inst.clientId === clientId);
+        
+        // Agregar opciones
+        clientInstallations.forEach(installation => {
+          const option = document.createElement('option');
+          option.value = installation.id;
+          option.textContent = installation.address || 'Sin dirección';
+          installationSelect.appendChild(option);
+        });
+      } else {
+        installationSelect.disabled = true;
+        componentSelect.disabled = true;
+      }
+    });
+  }
+  
+  // Al seleccionar una instalación, cargar sus componentes
+  if (installationSelect) {
+    installationSelect.addEventListener('change', () => {
+      const installationId = installationSelect.value;
+      componentSelect.innerHTML = '<option value="">Seleccionar componente...</option>';
+      componentDetailsCard.style.display = 'none';
+      
+      if (installationId) {
+        // Habilitar select de componente
+        componentSelect.disabled = false;
+        
+        // Encontrar la instalación seleccionada
+        const installation = installations.find(inst => inst.id === installationId);
+        
+        if (installation && installation.components && installation.components.length > 0) {
+          // Agregar opciones de componentes
+          installation.components.forEach(component => {
+            const option = document.createElement('option');
+            option.value = component.id;
+            option.textContent = component.name || 'Componente sin nombre';
+            // Guardar datos del componente como atributos del option
+            option.setAttribute('data-model', component.model || '-');
+            option.setAttribute('data-last-maintenance', component.lastMaintenanceDate || '');
+            option.setAttribute('data-frequency', component.frequency || '12');
+            componentSelect.appendChild(option);
+          });
+        }
+      } else {
+        componentSelect.disabled = true;
+      }
+    });
+  }
+  
+  // Al seleccionar un componente, mostrar sus detalles
+  if (componentSelect) {
+    componentSelect.addEventListener('change', () => {
+      const selectedOption = componentSelect.options[componentSelect.selectedIndex];
+      
+      if (componentSelect.value) {
+        // Mostrar detalles del componente
+        document.getElementById('componentModelDisplay').textContent = 
+          selectedOption.getAttribute('data-model');
+        
+        const lastMaintenance = selectedOption.getAttribute('data-last-maintenance');
+        document.getElementById('componentLastMaintenanceDisplay').textContent = 
+          lastMaintenance ? formatDateCorrectly(lastMaintenance) : 'Sin registro previo';
+        
+        // Establecer frecuencia según el componente
+        const frequency = selectedOption.getAttribute('data-frequency');
+        if (frequency) {
+          frequencyInput.value = frequency;
+        }
+        
+        // Mostrar la tarjeta de detalles
+        componentDetailsCard.style.display = 'block';
+        
+        // Calcular próxima fecha de mantenimiento
+        calculateNextMaintenanceDate();
+      } else {
+        componentDetailsCard.style.display = 'none';
+      }
+    });
+  }
+  
+  // Calcular próxima fecha de mantenimiento al cambiar fecha o frecuencia
+  if (maintenanceDate && frequencyInput) {
+    maintenanceDate.addEventListener('change', calculateNextMaintenanceDate);
+    frequencyInput.addEventListener('change', calculateNextMaintenanceDate);
+  }
+  
+  // Función para calcular la próxima fecha de mantenimiento
+  function calculateNextMaintenanceDate() {
+    if (maintenanceDate.value) {
+      try {
+        const date = new Date(maintenanceDate.value);
+        const frequency = parseInt(frequencyInput.value) || 12;
+        
+        // Clonar la fecha y agregar los meses de frecuencia
+        const nextDate = new Date(date);
+        nextDate.setMonth(nextDate.getMonth() + frequency);
+        
+        // Formatear para input date (YYYY-MM-DD)
+        const year = nextDate.getFullYear();
+        const month = String(nextDate.getMonth() + 1).padStart(2, '0');
+        const day = String(nextDate.getDate()).padStart(2, '0');
+        
+        nextMaintenanceDate.value = `${year}-${month}-${day}`;
+      } catch (error) {
+        console.error('Error al calcular próxima fecha:', error);
+        nextMaintenanceDate.value = '';
+      }
+    }
+  }
+  
+  // Botón de guardar
   if (saveButton) {
     saveButton.addEventListener('click', async () => {
+      // Validar formulario
+      const form = document.getElementById('addMaintenanceForm');
+      if (!form.checkValidity()) {
+        // Mostrar validación del navegador
+        form.reportValidity();
+        return;
+      }
+      
+      // Deshabilitar botón mientras se procesa
+      saveButton.disabled = true;
+      saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+      
       try {
-        // Deshabilitar botón
-        saveButton.disabled = true;
-        saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
-        
         // Obtener datos del formulario
-        const maintenanceDate = document.getElementById('maintenance-date').value;
-        const notes = document.getElementById('maintenance-notes').value;
+        const installationId = installationSelect.value;
+        const componentId = componentSelect.value;
+        const maintenanceDate = document.getElementById('maintenanceDate').value;
+        const maintenanceNotes = document.getElementById('maintenanceNotes').value;
+        const sendNotification = document.getElementById('sendNotificationCheck').checked;
         
-        // Enviar al backend
-        const result = await window.api.registerMaintenance({
-          installationId: installationId,
-          componentId: componentId,
-          maintenanceDate: maintenanceDate,
-          notes: notes
-        });
+        // Crear objeto de datos para la API
+        const maintenanceData = {
+          installationId,
+          componentId,
+          maintenanceDate,
+          notes: maintenanceNotes
+        };
+        
+        // Registrar mantenimiento
+        const result = await window.api.registerMaintenance(maintenanceData);
         
         if (result.success) {
           // Cerrar modal
-          modal.hide();
+          const modalInstance = bootstrap.Modal.getInstance(document.getElementById('addMaintenanceModal'));
+          modalInstance.hide();
           
           // Mostrar mensaje de éxito
           showAlert('success', 'Mantenimiento registrado correctamente');
           
-          // Recargar lista de mantenimientos
+          // Si se solicitó enviar notificación, mostrar modal de WhatsApp
+          if (sendNotification) {
+            // Buscar datos del cliente para la notificación
+            const clientId = clientSelect.value;
+            const clientName = clientSelect.options[clientSelect.selectedIndex].text;
+            
+            // Buscar instalación y componente para el mensaje
+            const installation = installations.find(i => i.id === installationId);
+            const component = installation?.components?.find(c => c.id === componentId);
+            
+            // Buscar teléfono del cliente en la lista completa de clientes
+            const client = window.api.getClients()
+              .then(clients => clients.find(c => c.id === clientId))
+              .catch(() => null);
+              
+            if (client && client.phone) {
+              // Mostrar modal de WhatsApp con los datos
+              showWhatsAppModal(
+                clientId, 
+                clientName, 
+                client.phone, 
+                component?.name || 'Componente', 
+                installation?.address || 'Dirección', 
+                maintenanceDate
+              );
+            } else {
+              showAlert('warning', `No se pudo enviar notificación: el cliente no tiene un número de teléfono registrado`);
+            }
+          }
+          
+          // Recargar la sección para mostrar los cambios
           loadMaintenance();
         } else {
           throw new Error(result.message || 'Error al registrar mantenimiento');
         }
       } catch (error) {
-        console.error('Error al registrar mantenimiento:', error);
-        showAlert('danger', `Error al registrar mantenimiento: ${error.message || 'Error desconocido'}`);
+        console.error('Error al guardar mantenimiento:', error);
+        showAlert('danger', `Error al guardar mantenimiento: ${error.message}`);
         
         // Restaurar botón
         saveButton.disabled = false;
-        saveButton.innerHTML = 'Registrar';
+        saveButton.innerHTML = 'Guardar';
       }
     });
   }
-  
-  // Eliminar modal del DOM cuando se cierre
-  document.getElementById('registerMaintenanceModal').addEventListener('hidden.bs.modal', function() {
-    this.remove();
-  });
+}
+
+// Función para mostrar el modal de registro de mantenimiento
+function showMaintenanceRegistrationModal(installationId, componentId) {
+  try {
+    // Verificar si ya existe el modal y eliminarlo
+    const existingModal = document.getElementById('registerMaintenanceModal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+    
+    // Crear modal HTML
+    const modalHtml = `
+      <div class="modal fade" id="registerMaintenanceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Registrar Mantenimiento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <form id="registerMaintenanceForm">
+                <input type="hidden" id="maintenance-installation-id" value="${installationId}">
+                <input type="hidden" id="maintenance-component-id" value="${componentId}">
+                
+                <div class="mb-3">
+                  <label for="maintenance-date" class="form-label">Fecha de mantenimiento</label>
+                  <input type="date" class="form-control" id="maintenance-date" value="${new Date().toISOString().split('T')[0]}" required>
+                </div>
+                
+                <div class="mb-3">
+                  <label for="maintenance-notes" class="form-label">Notas</label>
+                  <textarea class="form-control" id="maintenance-notes" rows="3" placeholder="Observaciones o detalles del mantenimiento realizado"></textarea>
+                </div>
+              </form>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="save-maintenance-btn">Registrar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Agregar al DOM
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = modalHtml;
+    document.body.appendChild(tempDiv.firstChild);
+    
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById('registerMaintenanceModal'));
+    modal.show();
+    
+    // Configurar botón de guardar
+    const saveButton = document.getElementById('save-maintenance-btn');
+    if (saveButton) {
+      saveButton.addEventListener('click', async () => {
+        try {
+          // Deshabilitar botón
+          saveButton.disabled = true;
+          saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+          
+          // Obtener datos del formulario
+          const maintenanceDate = document.getElementById('maintenance-date').value;
+          const notes = document.getElementById('maintenance-notes').value;
+          
+          // Enviar al backend
+          const result = await window.api.registerMaintenance({
+            installationId: installationId,
+            componentId: componentId,
+            maintenanceDate: maintenanceDate,
+            notes: notes
+          });
+          
+          if (result.success) {
+            // Cerrar modal
+            modal.hide();
+            
+            // Mostrar mensaje de éxito
+            showAlert('success', 'Mantenimiento registrado correctamente');
+            
+            // Recargar lista de mantenimientos
+            loadMaintenance();
+          } else {
+            throw new Error(result.message || 'Error al registrar mantenimiento');
+          }
+        } catch (error) {
+          console.error('Error al registrar mantenimiento:', error);
+          showAlert('danger', `Error al registrar mantenimiento: ${error.message || 'Error desconocido'}`);
+          
+          // Restaurar botón
+          saveButton.disabled = false;
+          saveButton.innerHTML = 'Registrar';
+        }
+      });
+    }
+    
+    // Eliminar modal del DOM cuando se cierre
+    document.getElementById('registerMaintenanceModal').addEventListener('hidden.bs.modal', function() {
+      this.remove();
+    });
+  } catch (error) {
+    console.error('Error al mostrar modal de registro:', error);
+    showAlert('danger', 'Error al mostrar el formulario de registro de mantenimiento');
+  }
 }
 
 // Función para mostrar el modal de WhatsApp
@@ -545,7 +905,100 @@ function showWhatsAppModal(clientId, clientName, clientPhone, component, address
 
 // Función para mostrar modal de notificación a todos
 function showNotifyAllModal() {
-  alert('Esta función enviará notificaciones a todos los clientes con mantenimientos pendientes. Implementación pendiente.');
+  // Crear modal para notificar a todos los clientes
+  const modalHtml = `
+    <div class="modal fade" id="notifyAllModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Notificar a todos los clientes</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Esta acción enviará notificaciones a todos los clientes que tienen mantenimientos pendientes en los próximos días.</p>
+            
+            <div class="mb-3">
+              <label for="notifyDaysFilter" class="form-label">Notificar mantenimientos en los próximos:</label>
+              <select class="form-select" id="notifyDaysFilter">
+                <option value="7">7 días</option>
+                <option value="15">15 días</option>
+                <option value="30" selected>30 días</option>
+              </select>
+            </div>
+            
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="onlyWithPhoneCheck" checked>
+              <label class="form-check-label" for="onlyWithPhoneCheck">
+                Solo clientes con teléfono registrado
+              </label>
+            </div>
+            
+            <div class="alert alert-info">
+              <i class="bi bi-info-circle me-2"></i>
+              Solo se enviará un mensaje por cliente, incluso si tienen varios mantenimientos pendientes.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-success" id="confirmNotifyAllBtn">
+              <i class="bi bi-whatsapp me-1"></i> Enviar Notificaciones
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Agregar modal al DOM
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHtml;
+  document.body.appendChild(tempDiv.firstChild);
+  
+  // Mostrar modal
+  const modal = new bootstrap.Modal(document.getElementById('notifyAllModal'));
+  modal.show();
+  
+  // Configurar botón de confirmar
+  const confirmButton = document.getElementById('confirmNotifyAllBtn');
+  if (confirmButton) {
+    confirmButton.addEventListener('click', async () => {
+      try {
+        // Deshabilitar botón
+        confirmButton.disabled = true;
+        confirmButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando...';
+        
+        // Obtener filtros
+        const daysFilter = parseInt(document.getElementById('notifyDaysFilter').value);
+        const onlyWithPhone = document.getElementById('onlyWithPhoneCheck').checked;
+        
+        // Aquí implementaríamos la lógica para enviar notificaciones a todos
+        // Por ahora, mostramos un mensaje informativo
+        setTimeout(() => {
+          // Cerrar modal
+          modal.hide();
+          
+          // Mostrar mensaje de éxito
+          showAlert('success', 'Funcionalidad en desarrollo. Se implementará la notificación masiva pronto.');
+          
+          // Eliminar modal del DOM
+          document.getElementById('notifyAllModal').remove();
+        }, 1500);
+        
+      } catch (error) {
+        console.error('Error al preparar notificaciones masivas:', error);
+        showAlert('danger', `Error: ${error.message || 'Error desconocido'}`);
+        
+        // Restaurar botón
+        confirmButton.disabled = false;
+        confirmButton.innerHTML = '<i class="bi bi-whatsapp me-1"></i> Enviar Notificaciones';
+      }
+    });
+  }
+  
+  // Eliminar modal del DOM cuando se cierre
+  document.getElementById('notifyAllModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
 }
 
 // Filtrar mantenimientos según los criterios seleccionados
