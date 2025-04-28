@@ -1,3 +1,4 @@
+// Cargar la sección de mantenimientos
 async function loadMaintenance() {
   const maintenanceSection = document.getElementById('maintenance-section');
   
