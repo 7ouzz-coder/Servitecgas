@@ -1,9 +1,4 @@
 document.addEventListener('DOMContentLoaded', async () => {
-  // Verificar autenticación
-  try {
-    const authStatus = await window.api.checkAuth();
-    
-    // Verificar autenticación
   try {
     const authStatus = await window.api.checkAuth();
     
@@ -486,14 +481,7 @@ async function deleteUser(userId) {
     showAlert('danger', 'Error al eliminar usuario');
   }
 }
-    
-    // Iniciar la aplicación si está autenticado
-    initApp();
-  } catch (error) {
-    console.error('Error al verificar autenticación:', error);
-    // En caso de error, redirigir a login por seguridad
-    window.location.href = 'login.html';
-  }
+    //PROBLEMAS EN ESTA SECCIÓN ESTA DUPLICADA
 });
 
 // Iniciar la aplicación
@@ -505,6 +493,9 @@ function initApp() {
   
   // Cargar información del usuario
   loadUserInfo();
+  
+  // Cargar servicio de mantenimiento (NUEVO)
+  loadMaintenanceService();
   
   // Registrar componentes y eventos de WhatsApp
   registerWhatsAppComponent();
@@ -599,6 +590,35 @@ function initNavigation() {
   });
 }
 
+// Cargar script del servicio de mantenimiento (NUEVO)
+function loadMaintenanceService() {
+  return new Promise((resolve, reject) => {
+    // Crear elemento script
+    const script = document.createElement('script');
+    script.src = 'components/maintenance-service.js';
+    script.onload = () => {
+      console.log('✅ Servicio de mantenimiento cargado correctamente');
+      
+      // Verificar si las notificaciones automáticas están activadas
+      const autoNotifyEnabled = localStorage.getItem('autoNotifyEnabled') === 'true';
+      if (autoNotifyEnabled && window.maintenanceService) {
+        // Inicializar notificaciones automáticas
+        window.maintenanceService.setupAutomaticNotifications();
+        console.log('✅ Notificaciones automáticas de mantenimiento configuradas');
+      }
+      
+      resolve();
+    };
+    script.onerror = (err) => {
+      console.error('❌ Error al cargar servicio de mantenimiento:', err);
+      reject(err);
+    };
+    
+    // Agregar al DOM
+    document.head.appendChild(script);
+  });
+}
+
 // Inicializar sistema de alertas
 function initAlerts() {
   // Escuchar eventos de alerta desde el proceso principal
@@ -611,6 +631,15 @@ function initAlerts() {
 function showAlert(type, message, duration = 5000) {
   const alertContainer = document.getElementById('alert-container');
   
+  if (!alertContainer) {
+    // Crear contenedor de alertas si no existe
+    const container = document.createElement('div');
+    container.id = 'alert-container';
+    container.className = 'position-fixed top-0 start-50 translate-middle-x p-3';
+    container.style.zIndex = '9999';
+    document.body.appendChild(container);
+  }
+  
   const alertDiv = document.createElement('div');
   alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
   alertDiv.role = 'alert';
@@ -620,13 +649,19 @@ function showAlert(type, message, duration = 5000) {
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
   `;
   
-  alertContainer.appendChild(alertDiv);
+  const container = document.getElementById('alert-container');
+  container.appendChild(alertDiv);
   
   // Cerrar automáticamente después de la duración
   setTimeout(() => {
     if (alertDiv.parentNode) {
-      const bsAlert = new bootstrap.Alert(alertDiv);
-      bsAlert.close();
+      try {
+        const bsAlert = new bootstrap.Alert(alertDiv);
+        bsAlert.close();
+      } catch (e) {
+        // Si falla, eliminar manualmente
+        alertDiv.remove();
+      }
     }
   }, duration);
 }
@@ -714,7 +749,7 @@ function showWhatsAppQrModal(qrData) {
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Conectar WhatsApp</h5>
+            <h5 class="modal-title">Conectar a WhatsApp Web</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body text-center">
