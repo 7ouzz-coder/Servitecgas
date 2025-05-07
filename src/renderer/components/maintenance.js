@@ -161,7 +161,30 @@ async function loadMaintenance() {
         </div>
       </div>
     `;
-    
+    setTimeout(() => {
+      const addMaintenanceButton = document.getElementById('addMaintenanceButton');
+      console.log('Botón encontrado:', addMaintenanceButton);
+      
+      if (addMaintenanceButton) {
+        // Eliminar listeners previos
+        const clonedButton = addMaintenanceButton.cloneNode(true);
+        addMaintenanceButton.parentNode.replaceChild(clonedButton, addMaintenanceButton);
+        
+        // Añadir nuevo event listener
+        document.getElementById('addMaintenanceButton').onclick = async function() {
+          console.log('Botón Add Maintenance clickeado');
+          try {
+            const clients = await window.api.getClients();
+            const installations = await window.api.getInstallations();
+            showAddMaintenanceModal(clients, installations);
+          } catch (error) {
+            console.error('Error al obtener datos:', error);
+            showAlert('danger', 'Error al cargar datos: ' + error.message);
+          }
+        };
+      }
+    }, 100);
+
     // Configurar eventos
     setupMaintenanceEvents(clients, installations);
 
@@ -353,11 +376,25 @@ function setupMaintenanceEvents(clients, installations) {
     urgencyFilter.addEventListener('change', filterMaintenance);
   }
   
+  // Asegurarse de que clients e installations son arrays válidos
+  const validClients = Array.isArray(clients) ? clients : [];
+  const validInstallations = Array.isArray(installations) ? installations : [];
+
   // Botón para agregar mantenimiento
   const addMaintenanceButton = document.getElementById('addMaintenanceButton');
+  console.log("Botón agregar mantenimiento:", addMaintenanceButton); // Para depuración
+  
   if (addMaintenanceButton) {
-    addMaintenanceButton.addEventListener('click', () => {
-      showAddMaintenanceModal(clients, installations);
+    // Remover cualquier event listener existente
+    addMaintenanceButton.replaceWith(addMaintenanceButton.cloneNode(true));
+    
+    // Obtener la referencia actualizada
+    const refreshedButton = document.getElementById('addMaintenanceButton');
+    
+    // Agregar nuevo event listener
+    refreshedButton.addEventListener('click', function() {
+      console.log("Botón agregar mantenimiento clickeado");
+      showAddMaintenanceModal(validClients, validInstallations);
     });
   }
   
@@ -551,123 +588,692 @@ function showScheduleNotificationsModal() {
 
 // Función para mostrar el modal de agregar mantenimiento
 function showAddMaintenanceModal(clients, installations) {
-  // Verificar si ya existe el modal y eliminarlo
-  const existingModal = document.getElementById('addMaintenanceModal');
-  if (existingModal) {
-    existingModal.remove();
-  }
-  
-  // Crear contenido del modal
-  const modalHtml = `
-    <div class="modal fade" id="addMaintenanceModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Agregar Mantenimiento</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <form id="addMaintenanceForm">
-              <!-- Selección de cliente -->
-              <div class="mb-3">
-                <label for="maintenanceClientSelect" class="form-label">Cliente *</label>
-                <select class="form-select" id="maintenanceClientSelect" required>
-                  <option value="">Seleccionar cliente...</option>
-                  ${clients.map(client => `
-                    <option value="${client.id}">${client.name}</option>
-                  `).join('')}
-                </select>
-              </div>
-              
-              <!-- Selección de instalación -->
-              <div class="mb-3">
-                <label for="maintenanceInstallationSelect" class="form-label">Instalación / Dirección *</label>
-                <select class="form-select" id="maintenanceInstallationSelect" required disabled>
-                  <option value="">Seleccione un cliente primero</option>
-                </select>
-              </div>
-              
-              <!-- Selección de componente -->
-              <div class="mb-3">
-                <label for="maintenanceComponentSelect" class="form-label">Componente *</label>
-                <select class="form-select" id="maintenanceComponentSelect" required disabled>
-                  <option value="">Seleccione una instalación primero</option>
-                </select>
-              </div>
-              
-              <!-- Detalles del componente -->
-              <div class="component-details card p-3 mb-3" style="display: none;" id="componentDetailsCard">
-                <h6 class="card-subtitle mb-2 text-muted">Detalles del componente</h6>
+  try {
+    console.log("Ejecutando showAddMaintenanceModal");
+    
+    // Verificar si ya existe el modal y eliminarlo
+    const existingModal = document.getElementById('addMaintenanceModal');
+    if (existingModal) {
+      existingModal.remove();
+    }
+    
+    // Crear contenido del modal con opciones en línea para cada campo
+    const modalHtml = `
+      <div class="modal fade" id="addMaintenanceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Agregar Mantenimiento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <form id="addMaintenanceForm">
+                <!-- Cliente -->
+                <div class="mb-3">
+                  <div class="d-flex align-items-center mb-2">
+                    <label class="form-label mb-0 me-auto">Cliente *</label>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="clientMode" id="selectClientMode" value="select" checked>
+                      <label class="form-check-label" for="selectClientMode">Seleccionar</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="clientMode" id="manualClientMode" value="manual">
+                      <label class="form-check-label" for="manualClientMode">Ingresar</label>
+                    </div>
+                  </div>
+                  
+                  <div id="selectClientContainer">
+                    <select class="form-select" id="maintenanceClientSelect">
+                      <option value="">Seleccionar cliente...</option>
+                      ${clients.map(client => `
+                        <option value="${client.id}">${client.name}</option>
+                      `).join('')}
+                    </select>
+                  </div>
+                  
+                  <div id="manualClientContainer" style="display:none;">
+                    <input type="text" class="form-control" id="manualClientName" placeholder="Nombre del cliente">
+                  </div>
+                </div>
+                
+                <!-- Instalación / Dirección -->
+                <div class="mb-3">
+                  <div class="d-flex align-items-center mb-2">
+                    <label class="form-label mb-0 me-auto">Instalación / Dirección *</label>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="addressMode" id="selectAddressMode" value="select" checked>
+                      <label class="form-check-label" for="selectAddressMode">Seleccionar</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="addressMode" id="manualAddressMode" value="manual">
+                      <label class="form-check-label" for="manualAddressMode">Ingresar</label>
+                    </div>
+                  </div>
+                  
+                  <div id="selectAddressContainer">
+                    <select class="form-select" id="maintenanceInstallationSelect" disabled>
+                      <option value="">Seleccione un cliente primero</option>
+                    </select>
+                  </div>
+                  
+                  <div id="manualAddressContainer" style="display:none;">
+                    <input type="text" class="form-control" id="manualAddress" placeholder="Dirección completa">
+                  </div>
+                </div>
+                
+                <!-- Componente -->
+                <div class="mb-3">
+                  <div class="d-flex align-items-center mb-2">
+                    <label class="form-label mb-0 me-auto">Componente *</label>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="componentMode" id="selectComponentMode" value="select" checked>
+                      <label class="form-check-label" for="selectComponentMode">Seleccionar</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="radio" name="componentMode" id="manualComponentMode" value="manual">
+                      <label class="form-check-label" for="manualComponentMode">Ingresar</label>
+                    </div>
+                  </div>
+                  
+                  <div id="selectComponentContainer">
+                    <select class="form-select" id="maintenanceComponentSelect" disabled>
+                      <option value="">Seleccione una instalación primero</option>
+                    </select>
+                  </div>
+                  
+                  <div id="manualComponentContainer" style="display:none;">
+                    <div class="row">
+                      <div class="col-md-6">
+                        <input type="text" class="form-control" id="manualComponentName" placeholder="Nombre del componente">
+                      </div>
+                      <div class="col-md-6">
+                        <input type="text" class="form-control" id="manualComponentModel" placeholder="Marca/Modelo">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Detalles del componente (para modo selección) -->
+                <div class="component-details card p-3 mb-3" style="display: none;" id="componentDetailsCard">
+                  <h6 class="card-subtitle mb-2 text-muted">Detalles del componente</h6>
+                  <div class="row">
+                    <div class="col-md-6">
+                      <p><strong>Marca/Modelo:</strong> <span id="componentModelDisplay">-</span></p>
+                    </div>
+                    <div class="col-md-6">
+                      <p><strong>Última mantención:</strong> <span id="componentLastMaintenanceDisplay">-</span></p>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Fechas y notas (común para ambos modos) -->
                 <div class="row">
                   <div class="col-md-6">
-                    <p><strong>Marca/Modelo:</strong> <span id="componentModelDisplay">-</span></p>
+                    <div class="mb-3">
+                      <label for="maintenanceDate" class="form-label">Fecha de mantención *</label>
+                      <input type="date" class="form-control" id="maintenanceDate" required value="${new Date().toISOString().split('T')[0]}">
+                    </div>
                   </div>
                   <div class="col-md-6">
-                    <p><strong>Última mantención:</strong> <span id="componentLastMaintenanceDisplay">-</span></p>
+                    <div class="mb-3">
+                      <label for="maintenanceFrequency" class="form-label">Frecuencia de mantención (meses)</label>
+                      <input type="number" class="form-control" id="maintenanceFrequency" min="1" max="60" value="12">
+                      <small class="form-text text-muted">La próxima mantención se calculará automáticamente</small>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <!-- Fechas y notas -->
-              <div class="row">
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="maintenanceDate" class="form-label">Fecha de mantención *</label>
-                    <input type="date" class="form-control" id="maintenanceDate" required value="${new Date().toISOString().split('T')[0]}">
-                  </div>
+                
+                <div class="mb-3">
+                  <label for="maintenanceNotes" class="form-label">Notas / Observaciones</label>
+                  <textarea class="form-control" id="maintenanceNotes" rows="3" placeholder="Observaciones o detalles del mantenimiento"></textarea>
                 </div>
-                <div class="col-md-6">
-                  <div class="mb-3">
-                    <label for="maintenanceFrequency" class="form-label">Frecuencia de mantención (meses)</label>
-                    <input type="number" class="form-control" id="maintenanceFrequency" min="1" max="60" value="12">
-                    <small class="form-text text-muted">La próxima mantención se calculará automáticamente</small>
-                  </div>
+                
+                <div class="mb-3">
+                  <label for="nextMaintenanceDate" class="form-label">Próxima mantención (calculada)</label>
+                  <input type="date" class="form-control" id="nextMaintenanceDate" readonly>
                 </div>
-              </div>
-              
-              <div class="mb-3">
-                <label for="maintenanceNotes" class="form-label">Notas / Observaciones</label>
-                <textarea class="form-control" id="maintenanceNotes" rows="3" placeholder="Observaciones o detalles del mantenimiento"></textarea>
-              </div>
-              
-              <div class="mb-3">
-                <label for="nextMaintenanceDate" class="form-label">Próxima mantención (calculada)</label>
-                <input type="date" class="form-control" id="nextMaintenanceDate" readonly>
-              </div>
-              
-              <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" id="sendNotificationCheck">
-                <label class="form-check-label" for="sendNotificationCheck">
-                  Enviar notificación al cliente
-                </label>
-              </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-primary" id="saveMaintenanceBtn">Guardar</button>
+                
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" id="sendNotificationCheck">
+                  <label class="form-check-label" for="sendNotificationCheck">
+                    Enviar notificación al cliente
+                  </label>
+                </div>
+              </form>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="saveMaintenanceBtn">Guardar</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
+    
+    // Agregar al DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Esperar a que el DOM se actualice
+    setTimeout(() => {
+      try {
+        // Obtener referencia al modal
+        const modalElement = document.getElementById('addMaintenanceModal');
+        if (!modalElement) {
+          console.error('Modal element not found after insertion');
+          return;
+        }
+        
+        // Configurar los toggles de modo (seleccionar vs ingresar)
+        // Cliente
+        const selectClientMode = document.getElementById('selectClientMode');
+        const manualClientMode = document.getElementById('manualClientMode');
+        const selectClientContainer = document.getElementById('selectClientContainer');
+        const manualClientContainer = document.getElementById('manualClientContainer');
+        
+        selectClientMode.addEventListener('change', function() {
+          if (this.checked) {
+            selectClientContainer.style.display = '';
+            manualClientContainer.style.display = 'none';
+            document.getElementById('maintenanceClientSelect').setAttribute('required', 'required');
+            document.getElementById('manualClientName').removeAttribute('required');
+          }
+        });
+        
+        manualClientMode.addEventListener('change', function() {
+          if (this.checked) {
+            selectClientContainer.style.display = 'none';
+            manualClientContainer.style.display = '';
+            document.getElementById('maintenanceClientSelect').removeAttribute('required');
+            document.getElementById('manualClientName').setAttribute('required', 'required');
+          }
+        });
+        
+        // Dirección
+        const selectAddressMode = document.getElementById('selectAddressMode');
+        const manualAddressMode = document.getElementById('manualAddressMode');
+        const selectAddressContainer = document.getElementById('selectAddressContainer');
+        const manualAddressContainer = document.getElementById('manualAddressContainer');
+        
+        selectAddressMode.addEventListener('change', function() {
+          if (this.checked) {
+            selectAddressContainer.style.display = '';
+            manualAddressContainer.style.display = 'none';
+            document.getElementById('maintenanceInstallationSelect').setAttribute('required', 'required');
+            document.getElementById('manualAddress').removeAttribute('required');
+          }
+        });
+        
+        manualAddressMode.addEventListener('change', function() {
+          if (this.checked) {
+            selectAddressContainer.style.display = 'none';
+            manualAddressContainer.style.display = '';
+            document.getElementById('maintenanceInstallationSelect').removeAttribute('required');
+            document.getElementById('manualAddress').setAttribute('required', 'required');
+          }
+        });
+        
+        // Componente
+        const selectComponentMode = document.getElementById('selectComponentMode');
+        const manualComponentMode = document.getElementById('manualComponentMode');
+        const selectComponentContainer = document.getElementById('selectComponentContainer');
+        const manualComponentContainer = document.getElementById('manualComponentContainer');
+        const componentDetailsCard = document.getElementById('componentDetailsCard');
+        
+        selectComponentMode.addEventListener('change', function() {
+          if (this.checked) {
+            selectComponentContainer.style.display = '';
+            manualComponentContainer.style.display = 'none';
+            document.getElementById('maintenanceComponentSelect').setAttribute('required', 'required');
+            document.getElementById('manualComponentName').removeAttribute('required');
+          }
+        });
+        
+        manualComponentMode.addEventListener('change', function() {
+          if (this.checked) {
+            selectComponentContainer.style.display = 'none';
+            manualComponentContainer.style.display = '';
+            document.getElementById('maintenanceComponentSelect').removeAttribute('required');
+            document.getElementById('manualComponentName').setAttribute('required', 'required');
+            componentDetailsCard.style.display = 'none';
+          }
+        });
+        
+        // Calcular próxima fecha de mantenimiento al cambiar fecha o frecuencia
+        const maintenanceDate = document.getElementById('maintenanceDate');
+        const maintenanceFrequency = document.getElementById('maintenanceFrequency');
+        const nextMaintenanceDate = document.getElementById('nextMaintenanceDate');
+        
+        const calculateNextDate = () => {
+          try {
+            const date = new Date(maintenanceDate.value);
+            const frequency = parseInt(maintenanceFrequency.value) || 12;
+            
+            const nextDate = new Date(date);
+            nextDate.setMonth(nextDate.getMonth() + frequency);
+            
+            const year = nextDate.getFullYear();
+            const month = String(nextDate.getMonth() + 1).padStart(2, '0');
+            const day = String(nextDate.getDate()).padStart(2, '0');
+            
+            nextMaintenanceDate.value = `${year}-${month}-${day}`;
+          } catch (error) {
+            console.error('Error al calcular fecha:', error);
+          }
+        };
+        
+        // Recalcular al cambiar fecha o frecuencia
+        maintenanceDate.addEventListener('change', calculateNextDate);
+        maintenanceFrequency.addEventListener('change', calculateNextDate);
+        
+        // Calcular fecha inicial
+        calculateNextDate();
+        
+        // Configurar eventos de selección
+        setupAddMaintenanceModalEvents(installations);
+        
+        // Configurar el botón guardar para manejar todos los modos
+        const saveButton = document.getElementById('saveMaintenanceBtn');
+        if (saveButton) {
+          saveButton.addEventListener('click', async () => {
+            try {
+              console.log("Guardando mantenimiento...");
+              
+              // Verificar que se completaron los campos obligatorios
+              let isValid = true;
+              let errorMessage = "";
+              
+              // Validar cliente
+              if (selectClientMode.checked && !document.getElementById('maintenanceClientSelect').value) {
+                isValid = false;
+                errorMessage = "Debes seleccionar un cliente";
+              }
+              
+              if (manualClientMode.checked && !document.getElementById('manualClientName').value.trim()) {
+                isValid = false;
+                errorMessage = "Debes ingresar un nombre de cliente";
+              }
+              
+              // Validar dirección
+              if (selectAddressMode.checked && !document.getElementById('maintenanceInstallationSelect').value) {
+                isValid = false;
+                errorMessage = "Debes seleccionar una instalación";
+              }
+              
+              if (manualAddressMode.checked && !document.getElementById('manualAddress').value.trim()) {
+                isValid = false;
+                errorMessage = "Debes ingresar una dirección";
+              }
+              
+              // Validar componente
+              if (selectComponentMode.checked && !document.getElementById('maintenanceComponentSelect').value) {
+                isValid = false;
+                errorMessage = "Debes seleccionar un componente";
+              }
+              
+              if (manualComponentMode.checked && !document.getElementById('manualComponentName').value.trim()) {
+                isValid = false;
+                errorMessage = "Debes ingresar un nombre de componente";
+              }
+              
+              // Validar fecha
+              if (!document.getElementById('maintenanceDate').value) {
+                isValid = false;
+                errorMessage = "Debes seleccionar una fecha de mantenimiento";
+              }
+              
+              if (!isValid) {
+                showAlert('warning', errorMessage || 'Por favor completa todos los campos obligatorios');
+                return;
+              }
+              
+              // Deshabilitar botón mientras se procesa
+              saveButton.disabled = true;
+              saveButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Guardando...';
+              
+              // Guardar según las combinaciones de modos seleccionados
+              await saveMixedModeMaintenance();
+              
+            } catch (error) {
+              console.error('Error al guardar mantenimiento:', error);
+              showAlert('danger', `Error al guardar: ${error.message || 'Error desconocido'}`);
+            } finally {
+              // Restaurar botón
+              if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.innerHTML = 'Guardar';
+              }
+            }
+          });
+        }
+        
+        // Crear y mostrar el modal correctamente
+        const modalInstance = new bootstrap.Modal(modalElement);
+        modalInstance.show();
+        
+        // Eliminar modal cuando se cierre
+        modalElement.addEventListener('hidden.bs.modal', function() {
+          this.remove();
+        });
+      } catch (modalError) {
+        console.error('Error initializing Bootstrap modal:', modalError);
+        showAlert('danger', 'Error al mostrar el modal: ' + modalError.message);
+      }
+    }, 50);
+  } catch (error) {
+    console.error("Error en showAddMaintenanceModal:", error);
+    showAlert('danger', `Error al mostrar el formulario: ${error.message}`);
+  }
+}
+
+// Nueva función para manejar todas las combinaciones de modos
+async function saveMixedModeMaintenance() {
+  // Obtener los modos seleccionados
+  const isClientManual = document.getElementById('manualClientMode').checked;
+  const isAddressManual = document.getElementById('manualAddressMode').checked;
+  const isComponentManual = document.getElementById('manualComponentMode').checked;
   
-  // Agregar al DOM
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = modalHtml;
-  document.body.appendChild(tempDiv.firstChild);
+  // Obtener valores según los modos
+  const clientValue = isClientManual
+    ? document.getElementById('manualClientName').value.trim()
+    : document.getElementById('maintenanceClientSelect').value;
+    
+  const addressValue = isAddressManual
+    ? document.getElementById('manualAddress').value.trim()
+    : document.getElementById('maintenanceInstallationSelect').value;
+    
+  const componentValue = isComponentManual
+    ? document.getElementById('manualComponentName').value.trim()
+    : document.getElementById('maintenanceComponentSelect').value;
   
-  // Mostrar modal
-  const modal = new bootstrap.Modal(document.getElementById('addMaintenanceModal'));
-  modal.show();
+  // Otros valores comunes
+  const maintenanceDate = document.getElementById('maintenanceDate').value;
+  const frequency = parseInt(document.getElementById('maintenanceFrequency').value) || 12;
+  const maintenanceNotes = document.getElementById('maintenanceNotes').value;
+  const nextMaintenanceDate = document.getElementById('nextMaintenanceDate').value;
+  const sendNotification = document.getElementById('sendNotificationCheck').checked;
+  const componentModel = isComponentManual ? document.getElementById('manualComponentModel').value.trim() : '';
   
-  // Configurar eventos
-  setupAddMaintenanceModalEvents(installations);
+  try {
+    console.log("Procesando mantenimiento con modos:", {
+      isClientManual, isAddressManual, isComponentManual,
+      clientValue, addressValue, componentValue
+    });
+    
+    // Caso 1: Todo seleccionado de existentes
+    if (!isClientManual && !isAddressManual && !isComponentManual) {
+      await processExistingMaintenance(clientValue, addressValue, componentValue, maintenanceDate, 
+        frequency, nextMaintenanceDate, maintenanceNotes, sendNotification);
+      return;
+    }
+    
+    // Preparar para procesar combinaciones mixtas o todo manual
+    let clientId, installationId, componentId;
+    
+    // PASO 1: Manejar cliente (existente o crear nuevo)
+    if (isClientManual) {
+      // Buscar si ya existe un cliente con ese nombre
+      const clients = await window.api.getClients();
+      let client = clients.find(c => c.name.toLowerCase() === clientValue.toLowerCase());
+      
+      if (!client) {
+        // Crear nuevo cliente
+        const newClient = {
+          name: clientValue,
+          phone: '',
+          email: '',
+          notes: 'Cliente creado automáticamente'
+        };
+        console.log("Creando nuevo cliente:", newClient);
+        client = await window.api.addClient(newClient);
+      }
+      
+      clientId = client.id;
+    } else {
+      clientId = clientValue; // Ya tenemos el ID del select
+    }
+    
+    // PASO 2: Manejar instalación (existente o crear nueva)
+    if (isAddressManual) {
+      // Buscar si ya existe una instalación con esa dirección para ese cliente
+      const installations = await window.api.getInstallations();
+      let installation = installations.find(i => 
+        i.clientId === clientId && 
+        i.address.toLowerCase() === addressValue.toLowerCase()
+      );
+      
+      if (!installation) {
+        // Crear nueva instalación
+        const newInstallation = {
+          clientId: clientId,
+          address: addressValue,
+          type: 'Residencial',
+          date: new Date().toISOString().split('T')[0],
+          components: []
+        };
+        console.log("Creando nueva instalación:", newInstallation);
+        installation = await window.api.addInstallation(newInstallation);
+      }
+      
+      installationId = installation.id;
+    } else {
+      installationId = addressValue; // Ya tenemos el ID del select
+    }
+    
+    // PASO 3: Manejar componente (existente o crear nuevo)
+    if (isComponentManual) {
+      // Obtener la instalación
+      const installations = await window.api.getInstallations();
+      const installation = installations.find(i => i.id === installationId);
+      
+      if (!installation) {
+        throw new Error("No se encontró la instalación");
+      }
+      
+      // Verificar si ya existe un componente con ese nombre
+      let component = null;
+      if (installation.components && Array.isArray(installation.components)) {
+        component = installation.components.find(c => 
+          c.name && c.name.toLowerCase() === componentValue.toLowerCase()
+        );
+      }
+      
+      if (!component) {
+        // Crear nuevo componente
+        componentId = await window.api.generateId();
+        const newComponent = {
+          id: componentId,
+          name: componentValue,
+          model: componentModel,
+          lastMaintenanceDate: maintenanceDate,
+          frequency: frequency,
+          nextMaintenanceDate: nextMaintenanceDate
+        };
+        
+        // Asegurarnos que el array de componentes existe
+        if (!installation.components) {
+          installation.components = [];
+        }
+        
+        // Añadir componente
+        installation.components.push(newComponent);
+        
+        // Actualizar instalación
+        console.log("Añadiendo nuevo componente:", newComponent);
+        await window.api.updateInstallation(installation);
+      } else {
+        // Actualizar componente existente
+        componentId = component.id;
+        component.lastMaintenanceDate = maintenanceDate;
+        component.frequency = frequency;
+        component.nextMaintenanceDate = nextMaintenanceDate;
+        
+        // Actualizar el modelo si se proporcionó
+        if (componentModel) {
+          component.model = componentModel;
+        }
+        
+        // Actualizar instalación
+        console.log("Actualizando componente existente:", component);
+        await window.api.updateInstallation(installation);
+      }
+    } else {
+      componentId = componentValue; // Ya tenemos el ID del select
+    }
+    
+    // PASO 4: Registrar el mantenimiento
+    await window.api.registerMaintenance({
+      installationId: installationId,
+      componentId: componentId,
+      maintenanceDate: maintenanceDate,
+      notes: maintenanceNotes
+    });
+    
+    // Cerrar modal
+    const modalInstance = bootstrap.Modal.getInstance(document.getElementById('addMaintenanceModal'));
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+    
+    // Mostrar mensaje de éxito
+    showAlert('success', 'Mantenimiento registrado correctamente');
+    
+    // Si se solicitó enviar notificación
+    if (sendNotification) {
+      handleMaintenanceNotification(clientId, installationId, componentId, maintenanceDate);
+    }
+    
+    // Recargar la sección
+    loadMaintenance();
+    
+  } catch (error) {
+    console.error("Error en saveMixedModeMaintenance:", error);
+    throw error;
+  }
+}
+
+// Procesar mantenimiento para componentes existentes
+async function processExistingMaintenance(clientId, installationId, componentId, maintenanceDate, 
+  frequency, nextMaintenanceDate, maintenanceNotes, sendNotification) {
   
-  // Eliminar modal del DOM cuando se cierre
-  document.getElementById('addMaintenanceModal').addEventListener('hidden.bs.modal', function() {
-    this.remove();
-  });
+  try {
+    // Obtener instalaciones
+    const installations = await window.api.getInstallations();
+    
+    // Buscar la instalación y el componente
+    const installation = installations.find(i => i.id === installationId);
+    if (!installation) {
+      throw new Error('Instalación no encontrada');
+    }
+    
+    let component = null;
+    if (installation.components) {
+      component = installation.components.find(c => c.id === componentId);
+    }
+    
+    if (!component) {
+      throw new Error('Componente no encontrado');
+    }
+    
+    // Actualizar datos del componente
+    const updatedComponent = {
+      ...component,
+      lastMaintenanceDate: maintenanceDate,
+      frequency: frequency,
+      nextMaintenanceDate: nextMaintenanceDate
+    };
+    
+    // Actualizar componente en la instalación
+    const updatedComponents = installation.components.map(c => 
+      c.id === componentId ? updatedComponent : c
+    );
+    
+    const updatedInstallation = {
+      ...installation,
+      components: updatedComponents
+    };
+    
+    // Actualizar instalación en la base de datos
+    await window.api.updateInstallation(updatedInstallation);
+    
+    // Registrar el mantenimiento en el historial
+    await window.api.registerMaintenance({
+      installationId,
+      componentId,
+      maintenanceDate: maintenanceDate,
+      notes: maintenanceNotes
+    });
+    
+    // Cerrar modal
+    const modalInstance = bootstrap.Modal.getInstance(document.getElementById('addMaintenanceModal'));
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+    
+    // Mostrar mensaje de éxito
+    showAlert('success', 'Mantenimiento registrado correctamente');
+    
+    // Si se solicitó enviar notificación
+    if (sendNotification) {
+      handleMaintenanceNotification(clientId, installationId, componentId, maintenanceDate);
+    }
+    
+    // Recargar la sección
+    loadMaintenance();
+    
+  } catch (error) {
+    console.error("Error en processExistingMaintenance:", error);
+    throw error;
+  }
+}
+
+// Manejar la notificación de mantenimiento
+async function handleMaintenanceNotification(clientId, installationId, componentId, maintenanceDate) {
+  try {
+    // Obtener datos del cliente y componente
+    const clients = await window.api.getClients();
+    const installations = await window.api.getInstallations();
+    
+    const client = clients.find(c => c.id === clientId);
+    const installation = installations.find(i => i.id === installationId);
+    
+    if (!client || !installation) {
+      throw new Error("Cliente o instalación no encontrados");
+    }
+    
+    if (!client.phone) {
+      showAlert('warning', `No se pudo enviar notificación: el cliente ${client.name} no tiene un número de teléfono registrado`);
+      return;
+    }
+    
+    // Buscar el componente
+    let component = null;
+    if (installation.components) {
+      component = installation.components.find(c => c.id === componentId);
+    }
+    
+    if (!component) {
+      throw new Error("Componente no encontrado");
+    }
+    
+    // Calcular días para la próxima mantención
+    const nextDate = new Date(component.nextMaintenanceDate);
+    const today = new Date();
+    const daysLeft = Math.floor((nextDate - today) / (1000 * 60 * 60 * 24));
+    
+    // Mostrar modal de WhatsApp para notificar al cliente
+    showWhatsAppModal(
+      client.id,
+      client.name,
+      client.phone,
+      component.name,
+      installation.address,
+      component.nextMaintenanceDate,
+      daysLeft
+    );
+  } catch (error) {
+    console.error("Error al preparar notificación:", error);
+    showAlert('warning', 'No se pudo enviar notificación: ' + error.message);
+  }
 }
 
 // Función para configurar eventos del modal de agregar mantenimiento
