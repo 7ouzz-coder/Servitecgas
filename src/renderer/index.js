@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    // Verificar autenticación
   try {
     const authStatus = await window.api.checkAuth();
     
@@ -481,7 +482,6 @@ async function deleteUser(userId) {
     showAlert('danger', 'Error al eliminar usuario');
   }
 }
-    //PROBLEMAS EN ESTA SECCIÓN ESTA DUPLICADA
 });
 
 // Iniciar la aplicación
@@ -590,44 +590,18 @@ function initNavigation() {
   });
 }
 
-// Cargar script del servicio de mantenimiento (NUEVO)
-function loadMaintenanceService() {
-  return new Promise((resolve, reject) => {
-    // Crear elemento script
-    const script = document.createElement('script');
-    script.src = 'components/maintenance-service.js';
-    script.onload = () => {
-      console.log('✅ Servicio de mantenimiento cargado correctamente');
-      
-      // Verificar si las notificaciones automáticas están activadas
-      const autoNotifyEnabled = localStorage.getItem('autoNotifyEnabled') === 'true';
-      if (autoNotifyEnabled && window.maintenanceService) {
-        // Inicializar notificaciones automáticas
-        window.maintenanceService.setupAutomaticNotifications();
-        console.log('✅ Notificaciones automáticas de mantenimiento configuradas');
-      }
-      
-      resolve();
-    };
-    script.onerror = (err) => {
-      console.error('❌ Error al cargar servicio de mantenimiento:', err);
-      reject(err);
-    };
-    
-    // Agregar al DOM
-    document.head.appendChild(script);
-  });
-}
-
 // Inicializar sistema de alertas
 function initAlerts() {
   // Escuchar eventos de alerta desde el proceso principal
   window.api.onAlert((data) => {
     showAlert(data.type, data.message);
   });
+  
+  // Hacer la función showAlert accesible globalmente para otros componentes
+  window.showAlert = showAlert;
 }
 
-// Mostrar una alerta en la interfaz
+// Mostrar una alerta en la interfaz - MEJORADO
 function showAlert(type, message, duration = 5000) {
   const alertContainer = document.getElementById('alert-container');
   
@@ -664,6 +638,35 @@ function showAlert(type, message, duration = 5000) {
       }
     }
   }, duration);
+}
+
+// Cargar script del servicio de mantenimiento
+function loadMaintenanceService() {
+  return new Promise((resolve, reject) => {
+    // Crear elemento script
+    const script = document.createElement('script');
+    script.src = 'components/maintenance-service.js';
+    script.onload = () => {
+      console.log('✅ Servicio de mantenimiento cargado correctamente');
+      
+      // Verificar si las notificaciones automáticas están activadas
+      const autoNotifyEnabled = localStorage.getItem('autoNotifyEnabled') === 'true';
+      if (autoNotifyEnabled && window.maintenanceService) {
+        // Inicializar notificaciones automáticas
+        window.maintenanceService.setupAutomaticNotifications();
+        console.log('✅ Notificaciones automáticas de mantenimiento configuradas');
+      }
+      
+      resolve();
+    };
+    script.onerror = (err) => {
+      console.error('❌ Error al cargar servicio de mantenimiento:', err);
+      reject(err);
+    };
+    
+    // Agregar al DOM
+    document.head.appendChild(script);
+  });
 }
 
 function registerWhatsAppComponent() {
@@ -749,7 +752,7 @@ function showWhatsAppQrModal(qrData) {
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Conectar a WhatsApp Web</h5>
+            <h5 class="modal-title">Conectar WhatsApp</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body text-center">
